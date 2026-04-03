@@ -3,6 +3,7 @@ package rules
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -22,9 +23,12 @@ target:
 prerequisites:
   - none
 mutations:
-  - kind: noop
+  - kind: replace_query_param
+    param: id
+    from: self
+    to: other
 matchers:
-  - kind: always
+  - kind: status_code_unchanged
 references:
   - https://example.com
 tags: [test]
@@ -53,9 +57,73 @@ target:
   where: x
 prerequisites: []
 mutations:
-  - kind: noop
+  - kind: replace_query_param
+    param: a
+    from: b
+    to: c
 matchers:
-  - kind: always
+  - kind: status_in
+    allowed: [200]
+references:
+  - r
+`
+	_, err := ParseDocuments([]byte(doc))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestParseDocuments_unknownMutationKind(t *testing.T) {
+	doc := `
+id: bad.mut
+name: Bad mut
+category: test
+severity: low
+confidence: high
+safety:
+  mode: passive
+  destructive: false
+target:
+  methods: [GET]
+  where: x
+prerequisites: []
+mutations:
+  - kind: unsupported_mutation_xyz
+matchers:
+  - kind: status_code_unchanged
+references:
+  - r
+`
+	_, err := ParseDocuments([]byte(doc))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "unknown") {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestParseDocuments_unknownMatcherKind(t *testing.T) {
+	doc := `
+id: bad.mat
+name: Bad mat
+category: test
+severity: low
+confidence: high
+safety:
+  mode: passive
+  destructive: false
+target:
+  methods: [GET]
+  where: x
+prerequisites: []
+mutations:
+  - kind: replace_query_param
+    param: a
+    from: b
+    to: c
+matchers:
+  - kind: unsupported_matcher_xyz
 references:
   - r
 `

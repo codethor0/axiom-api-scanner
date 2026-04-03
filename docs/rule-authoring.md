@@ -1,84 +1,81 @@
 # Rule authoring
 
-Rules are YAML documents validated at load time. Each rule must declare identification, risk, safety, targeting, mutations, matchers, and external references.
+Rules are YAML documents. Each file may contain multiple documents. Loading walks `AXIOM_RULES_DIR` for `*.yml` and `*.yaml`.
 
-## Required fields
+## Required top-level fields
 
 | Field | Description |
 | --- | --- |
-| `id` | Stable identifier (unique in a deployment). |
-| `name` | Human title. |
-| `category` | Taxonomy bucket (for example `broken_object_level_authorization`). |
-| `severity` | Reported severity string (project conventions to be tightened). |
-| `confidence` | Expected signal quality. |
-| `safety.mode` | One of `passive`, `safe`, `full`. |
-| `safety.destructive` | Boolean; destructive rules cannot run without explicit enablement. |
-| `target.methods` | HTTP methods this rule may consider. |
-| `target.where` | Selector describing parameter placement (for example `path_params.id`). |
-| `prerequisites` | Declared requirements (session type, seed data). |
-| `mutations` | Non-empty list of maps; each must include string `kind` and parameters. |
-| `matchers` | Non-empty list of maps; each must include string `kind` and parameters. |
-| `references` | Non-empty list of citations (OWASP links, standards). |
-| `tags` | Free-form labels for filtering rule packs. |
+| `id` | Stable identifier |
+| `name` | Human title |
+| `category` | Taxonomy bucket |
+| `severity` | Reported severity |
+| `confidence` | Expected signal quality |
+| `safety.mode` | `passive`, `safe`, or `full` |
+| `safety.destructive` | Boolean |
+| `target.methods` | HTTP methods |
+| `target.where` | Selector for where the rule applies |
+| `prerequisites` | List (may be empty) |
+| `mutations` | Non-empty list of typed mutations |
+| `matchers` | Non-empty list of typed matchers |
+| `references` | Non-empty citations |
+| `tags` | Labels |
 
-## Example: passive readiness check
+Unknown `kind` values in mutations or matchers fail validation at load time.
+
+## V1 mutation kinds
+
+| `kind` | Required fields |
+| --- | --- |
+| `replace_path_param` | `param`, `from`, `to` (non-empty strings) |
+| `replace_query_param` | `param`, `from`, `to` |
+| `merge_json_fields` | `fields` (non-empty object) |
+| `path_normalization_variant` | `style` one of: `trailing_slash`, `double_slash`, `dot_segment`, `case_variant`, `encoded_slash` |
+| `rotate_request_headers` | `headers` (non-empty array of `{ name, value }`) |
+
+## V1 matcher kinds
+
+| `kind` | Required fields |
+| --- | --- |
+| `status_code_unchanged` | none |
+| `response_body_similarity` | `min_score` (0 through 1 inclusive) |
+| `json_path_absent` | `path` (non-empty) |
+| `status_in` | `allowed` (non-empty array of integer HTTP status codes) |
+| `header_present` | `name` (non-empty) |
+| `header_absent` | `name` (non-empty) |
+
+## Example: IDOR path swap
+
+See `rules/builtin/idor_path_swap.example.yaml`.
+
+## Example: passive probe with query swap
 
 ```yaml
-id: axiom.example.ping
-name: Health endpoint presence
-category: configuration
-severity: info
-confidence: high
+id: axiom.example.query_swap
+name: Example query IDOR probe
+category: broken_object_level_authorization
+severity: medium
+confidence: low
 safety:
   mode: passive
   destructive: false
 target:
   methods: [GET]
-  where: path_exact /health
+  where: query.id
 prerequisites: []
 mutations:
-  - kind: none
+  - kind: replace_query_param
+    param: id
+    from: self
+    to: foreign
 matchers:
-  - kind: status_in
-    allowed: [200, 204]
+  - kind: status_code_unchanged
 references:
   - https://owasp.org/www-project-api-security/
 tags:
-  - baseline
+  - example
 ```
 
-## Example: IDOR path swap (abbreviated)
+## API projection
 
-This mirrors `rules/builtin/idor_path_swap.example.yaml`: swap an object identifier in the path while preserving session, then compare responses under configured matchers.
-
-## Example: mass assignment probe (sketch)
-
-```yaml
-id: axiom.example.mass_assign.sketch
-name: Mass assignment privilege field probe (sketch)
-category: mass_assignment
-severity: medium
-confidence: low
-safety:
-  mode: safe
-  destructive: false
-target:
-  methods: [PATCH, PUT, POST]
-  where: json_body
-prerequisites:
-  - authenticated_session
-mutations:
-  - kind: merge_json_fields
-    fields:
-      is_admin: true
-      role: owner
-matchers:
-  - kind: json_path_absent
-    path: $.error
-references:
-  - OWASP API Security - Mass Assignment
-tags:
-  - mass-assignment
-```
-
-Schema enforcement will tighten allowed `kind` values for mutations and matchers as the engine gains capabilities.
+`GET /v1/rules` returns JSON where each mutation and matcher is flattened: a `kind` field plus kind-specific keys (for example `param`, `from`, `to`).

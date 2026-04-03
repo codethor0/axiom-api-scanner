@@ -16,12 +16,13 @@ const (
 
 // Scan represents a single scoped execution against a target API.
 type Scan struct {
-	ID          string     `json:"id"`
-	Status      ScanStatus `json:"status"`
-	TargetLabel string     `json:"target_label"`
-	SafetyMode  string     `json:"safety_mode"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID                 string     `json:"id"`
+	Status             ScanStatus `json:"status"`
+	TargetLabel        string     `json:"target_label"`
+	SafetyMode         string     `json:"safety_mode"`
+	AllowFullExecution bool       `json:"allow_full_execution"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 // Endpoint describes one operation surfaced by an imported OpenAPI spec.

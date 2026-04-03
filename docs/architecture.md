@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the intended shape of Axiom at V1. The repository scaffold implements a subset: models, rule loading, OpenAPI endpoint extraction, SQL migrations, and a stub HTTP API.
+This document describes the intended shape of Axiom at V1. The current tree includes models, typed rule loading, OpenAPI endpoint extraction, PostgreSQL-backed scan and finding metadata APIs, and golang-migrate-driven schema upgrades.
 
 ## Components
 
@@ -28,9 +28,9 @@ Loads OpenAPI 3.x specifications, validates them, and extracts a flat list of HT
 
 Finding and evidence artifact models. A valid finding must remain reproducible from stored evidence (baseline and mutated requests and responses, diff summary, rule identifier).
 
-### Storage (`internal/storage`, `migrations/`)
+### Storage (`internal/storage`, `internal/storage/postgres`, `migrations/`)
 
-PostgreSQL holds scan and finding metadata. Evidence payloads are stored behind the `EvidenceStore` interface (filesystem or object storage in production). Migrations use reversible SQL files; apply them with your chosen migration runner.
+`internal/storage` defines narrow repository interfaces (`ScanRepository`, `FindingRepository`, `EvidenceMetadataRepository`) and shared errors. `internal/storage/postgres` implements those interfaces with `pgxpool`. Raw blob evidence remains behind the separate `EvidenceStore` interface (filesystem or object storage in production). SQL migrations are versioned pairs consumed by **golang-migrate** (see [development.md](development.md)).
 
 ## Request flow (target)
 

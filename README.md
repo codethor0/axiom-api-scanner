@@ -20,11 +20,22 @@ Default execution posture is **passive** or **safe**. Destructive or high-impact
 
 ## Quickstart
 
-Requirements: Go 1.22 or newer.
+Requirements: Go as specified in `go.mod` and a PostgreSQL database.
+
+From the repository root (so migrations resolve), set `DATABASE_URL` and start the API (migrations run on startup):
 
 ```text
+export DATABASE_URL='postgres://user:pass@localhost:5432/axiom?sslmode=disable'
 go build -o bin/axiom-api ./cmd/api
-AXIOM_HTTP_ADDR=":8080" AXIOM_RULES_DIR="./rules" ./bin/axiom-api
+AXIOM_HTTP_ADDR=":8080" AXIOM_RULES_DIR="./rules" DATABASE_URL="$DATABASE_URL" ./bin/axiom-api
+```
+
+Create a scan (returns a real UUID and database timestamps):
+
+```text
+curl -s -X POST localhost:8080/v1/scans \
+  -H 'Content-Type: application/json' \
+  -d '{"target_label":"staging","safety_mode":"safe","allow_full_execution":false}' | jq .
 ```
 
 List loaded rules (from `AXIOM_RULES_DIR`):
@@ -58,7 +69,6 @@ curl -s -X POST localhost:8080/v1/specs/openapi/import --data-binary @spec.yaml 
 
 ## Roadmap (V1 focus)
 
-- Wire PostgreSQL metadata and evidence store implementations to the API (migrations are present; handlers are stubs).
 - Planner and executor for authenticated baseline and mutated requests.
 - Diff and finding pipeline with required evidence fields.
 - Rule packs: IDOR path and query swaps, mass assignment, selected 403 or path normalization bypass checks, controlled rate-limit header rotation after baseline detection.

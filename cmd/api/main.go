@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/codethor0/axiom-api-scanner/internal/api"
+	"github.com/codethor0/axiom-api-scanner/internal/dbmigrate"
+	"github.com/codethor0/axiom-api-scanner/internal/storage/postgres"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -26,7 +29,37 @@ func main() {
 		addr = ":8080"
 	}
 
-	h := &api.Handler{RulesDir: rulesDir}
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Error("DATABASE_URL is required for the control plane")
+		os.Exit(1)
+	}
+
+	migrationsDir := os.Getenv("AXIOM_MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		migrationsDir = "migrations"
+	}
+	if err := dbmigrate.Up(dsn, migrationsDir); err != nil {
+		log.Error("database migrations failed", "err", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		log.Error("database pool", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	store := postgres.NewStore(pool)
+	h := &api.Handler{
+		RulesDir: rulesDir,
+		Scans:    store,
+		Findings: store,
+		Evidence: store,
+	}
+
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           h.Routes(),
@@ -48,9 +81,9 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error("shutdown", "err", err)
 	}
 }

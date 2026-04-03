@@ -10,8 +10,9 @@
 
 | Layer | Scope |
 | --- | --- |
-| Unit | Rule validation, YAML parsing edge cases, OpenAPI extraction helpers. |
-| Integration | HTTP handlers with `httptest`, database repositories against ephemeral PostgreSQL (future). |
+| Unit | Rule validation (including unknown DSL kinds), YAML parsing, OpenAPI extraction helpers. |
+| Handler | Scan create, control, and OpenAPI routes using `httptest` and in-memory repository fakes (no database). |
+| Integration | `internal/storage/postgres` lifecycle test when `AXIOM_TEST_DATABASE_URL` is set; runs golang-migrate against that database. |
 | End-to-end | Full scan against recorded fixtures with expected findings (future). |
 
 ## Fixtures
@@ -23,6 +24,14 @@ Store OpenAPI snippets and HTTP transcripts under a dedicated `testdata` tree (t
 ```text
 go test ./...
 go vet ./...
+```
+
+The module `go` directive may require a newer toolchain than 1.22; use the version named in `go.mod`.
+
+Optional PostgreSQL smoke (see [development.md](development.md) for variables):
+
+```text
+make test-integration
 ```
 
 Linting:

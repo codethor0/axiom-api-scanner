@@ -38,16 +38,16 @@ func Validate(r Rule) error {
 		errs = append(errs, "mutations must include at least one step")
 	}
 	for i, m := range r.Mutations {
-		if kind, ok := m["kind"].(string); !ok || strings.TrimSpace(kind) == "" {
-			errs = append(errs, fmt.Sprintf("mutations[%d] must include a non-empty string kind", i))
+		if err := m.Validate(); err != nil {
+			errs = append(errs, fmt.Sprintf("mutations[%d]: %v", i, err))
 		}
 	}
 	if len(r.Matchers) == 0 {
 		errs = append(errs, "matchers must include at least one matcher")
 	}
 	for i, m := range r.Matchers {
-		if kind, ok := m["kind"].(string); !ok || strings.TrimSpace(kind) == "" {
-			errs = append(errs, fmt.Sprintf("matchers[%d] must include a non-empty string kind", i))
+		if err := m.Validate(); err != nil {
+			errs = append(errs, fmt.Sprintf("matchers[%d]: %v", i, err))
 		}
 	}
 	if len(r.References) == 0 {
