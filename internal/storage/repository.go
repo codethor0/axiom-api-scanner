@@ -107,6 +107,7 @@ type CreateFindingInput struct {
 	Severity            findings.Severity
 	Confidence          string
 	Summary             string
+	EvidenceSummary     []byte
 	ScanEndpointID      string
 	BaselineExecutionID string
 	MutatedExecutionID  string

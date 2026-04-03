@@ -80,7 +80,7 @@ rules                      YAML rule packs
 
 - Run baseline successfully before `POST .../executions/mutations` (`baseline_must_succeed_first` otherwise).
 - Mutations are sequential; scope and method support match baseline (GET + JSON POST).
-- Findings require rules in `AXIOM_RULES_DIR` with matchers the diff engine supports; incomplete evaluation skips finding creation.
+- Findings require rules in `AXIOM_RULES_DIR` with matchers the diff engine supports; incomplete evaluation skips finding creation. Persisted findings include `evidence_summary` JSON and assessed confidence/status tiers.
 - Use `GET .../executions` and `GET .../executions/{id}` to inspect exchanges; sensitive headers are redacted in stored metadata.
 
 ## Testing

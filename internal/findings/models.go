@@ -1,6 +1,9 @@
 package findings
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Severity is a coarse impact bucket for a finding.
 type Severity string
@@ -20,8 +23,10 @@ type Finding struct {
 	RuleID      string    `json:"rule_id"`
 	Category    string    `json:"category"`
 	Severity    Severity  `json:"severity"`
-	Confidence  string    `json:"confidence"`
-	Summary     string    `json:"summary"`
+	// Confidence is the assessed tier: confirmed, tentative, or incomplete (see evidence_summary for rule-declared confidence).
+	Confidence  string          `json:"confidence"`
+	Summary     string          `json:"summary"`
+	EvidenceSummary json.RawMessage `json:"evidence_summary,omitempty"`
 	EvidenceURI string    `json:"evidence_uri"`
 	// ScanEndpointID links to the persisted OpenAPI operation row (optional).
 	ScanEndpointID string `json:"scan_endpoint_id,omitempty"`

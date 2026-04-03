@@ -103,6 +103,36 @@ references:
 	}
 }
 
+func TestParseDocuments_invalidConfidence(t *testing.T) {
+	doc := `
+id: bad.conf
+name: Bad
+category: test
+severity: low
+confidence: speculative
+safety:
+  mode: passive
+  destructive: false
+target:
+  methods: [GET]
+  where: x
+prerequisites: []
+mutations:
+  - kind: replace_query_param
+    param: a
+    from: b
+    to: c
+matchers:
+  - kind: status_code_unchanged
+references:
+  - https://example.com
+`
+	_, err := ParseDocuments([]byte(doc))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestParseDocuments_unknownMatcherKind(t *testing.T) {
 	doc := `
 id: bad.mat

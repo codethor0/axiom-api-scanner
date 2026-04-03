@@ -1,0 +1,29 @@
+id: axiom.mass.privilege_merge.v1
+name: Mass assignment / privilege injection probe (JSON merge)
+category: broken_object_level_authorization
+severity: high
+confidence: medium
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods:
+    - POST
+    - PATCH
+  where: json_body
+prerequisites: []
+mutations:
+  - kind: merge_json_fields
+    fields:
+      role: admin
+      is_admin: true
+matchers:
+  - kind: status_code_unchanged
+  - kind: json_path_absent
+    path: error
+references:
+  - OWASP API Security 2023 - API1:2023 Broken Object Level Authorization
+  - https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/
+tags:
+  - mass_assignment
+  - authorization

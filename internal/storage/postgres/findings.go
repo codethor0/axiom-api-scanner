@@ -11,7 +11,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const findingsRowSelect = `id, scan_id, rule_id, category, severity, confidence, summary, evidence_uri,
+const findingsRowSelect = `id, scan_id, rule_id, category, severity, confidence, summary,
+       COALESCE(NULLIF(evidence_summary, ''), '{}'),
+       evidence_uri,
        COALESCE(scan_endpoint_id::text, ''),
        COALESCE(baseline_execution_id::text, ''),
        COALESCE(mutated_execution_id::text, ''),
@@ -42,6 +44,7 @@ func (s *Store) ListByScanID(ctx context.Context, scanID string) ([]findings.Fin
 func scanFindingRow(row pgx.Row) (findings.Finding, error) {
 	var f findings.Finding
 	var sev string
+	var evSum []byte
 	err := row.Scan(
 		&f.ID,
 		&f.ScanID,
@@ -50,6 +53,7 @@ func scanFindingRow(row pgx.Row) (findings.Finding, error) {
 		&sev,
 		&f.Confidence,
 		&f.Summary,
+		&evSum,
 		&f.EvidenceURI,
 		&f.ScanEndpointID,
 		&f.BaselineExecutionID,
@@ -61,6 +65,9 @@ func scanFindingRow(row pgx.Row) (findings.Finding, error) {
 		return findings.Finding{}, err
 	}
 	f.Severity = findings.Severity(sev)
+	if len(evSum) > 0 {
+		f.EvidenceSummary = evSum
+	}
 	return f, nil
 }
 
@@ -80,7 +87,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (findings.Finding, error
 // CreateFinding inserts a finding, evidence artifact, and increments findings_count on the scan.
 func (s *Store) CreateFinding(ctx context.Context, in storage.CreateFindingInput) (findings.Finding, error) {
 	if in.FindingStatus == "" {
-		in.FindingStatus = "confirmed"
+		in.FindingStatus = "tentative"
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -106,12 +113,16 @@ func (s *Store) CreateFinding(ctx context.Context, in storage.CreateFindingInput
 	if evidenceURI == "" {
 		evidenceURI = "/v1/findings/" + id + "/evidence"
 	}
+	evidenceSummary := in.EvidenceSummary
+	if len(evidenceSummary) == 0 {
+		evidenceSummary = []byte("{}")
+	}
 
 	const insF = `
 INSERT INTO findings (
-  id, scan_id, rule_id, category, severity, confidence, summary, evidence_uri,
+  id, scan_id, rule_id, category, severity, confidence, summary, evidence_summary, evidence_uri,
   scan_endpoint_id, baseline_execution_id, mutated_execution_id, finding_status
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING ` + findingsRowSelect
 
 	f, err := scanFindingRow(tx.QueryRow(ctx, insF,
@@ -122,6 +133,7 @@ RETURNING ` + findingsRowSelect
 		string(in.Severity),
 		in.Confidence,
 		in.Summary,
+		evidenceSummary,
 		evidenceURI,
 		epID,
 		baseID,

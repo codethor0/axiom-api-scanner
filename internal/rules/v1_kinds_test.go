@@ -2,66 +2,113 @@ package rules
 
 import "testing"
 
-func TestV1MutationsAndMatchers_roundTripYAML(t *testing.T) {
+func TestV1SafeRules_oneMutationPerFamily_parse(t *testing.T) {
 	const doc = `
-id: v1.coverage
-name: V1 kind coverage
+id: axiom.v1.idor.smoke
+name: IDOR smoke
 category: test
-severity: low
+severity: high
 confidence: high
 safety:
   mode: safe
   destructive: false
 target:
-  methods: [GET, POST]
-  where: path
+  methods: [GET]
+  where: path_params.id
 prerequisites: []
 mutations:
   - kind: replace_path_param
     param: id
     from: self
     to: other
+matchers:
+  - kind: status_code_unchanged
+  - kind: response_body_similarity
+    min_score: 0.85
+references:
+  - https://owasp.org/API-Security/
+tags: [v1]
+---
+id: axiom.v1.mass.smoke
+name: mass assignment smoke
+category: test
+severity: high
+confidence: high
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods: [POST]
+  where: json_body
+prerequisites: []
+mutations:
   - kind: merge_json_fields
     fields:
       role: admin
+matchers:
+  - kind: status_code_unchanged
+  - kind: json_path_absent
+    path: error
+references:
+  - https://owasp.org/API-Security/
+tags: [v1]
+---
+id: axiom.v1.pathnorm.smoke
+name: path normalization smoke
+category: test
+severity: medium
+confidence: medium
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods: [GET]
+  where: path
+prerequisites: []
+mutations:
   - kind: path_normalization_variant
     style: double_slash
+matchers:
+  - kind: status_code_unchanged
+references:
+  - https://owasp.org/API-Security/
+tags: [v1]
+---
+id: axiom.v1.ratelimit.smoke
+name: rate limit header smoke
+category: test
+severity: medium
+confidence: medium
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods: [GET]
+  where: path
+prerequisites: []
+mutations:
   - kind: rotate_request_headers
     headers:
       - name: X-Forwarded-For
         value: 127.0.0.2
 matchers:
   - kind: status_code_unchanged
-  - kind: response_body_similarity
-    min_score: 0.9
-  - kind: json_path_absent
-    path: $.error
-  - kind: status_in
-    allowed: [200, 204]
-  - kind: header_present
-    name: X-RateLimit-Remaining
-  - kind: header_absent
-    name: Retry-After
-  - kind: status_differs_from_baseline
-  - kind: response_body_substring
-    substring: needle
-  - kind: json_path_equals
-    path: field
-    value: v
   - kind: response_header_differs_from_baseline
-    name: ETag
+    name: X-RateLimit-Remaining
 references:
-  - https://example.com
+  - https://owasp.org/API-Security/
 tags: [v1]
 `
 	rules, err := ParseDocuments([]byte(doc))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rules) != 1 {
-		t.Fatal(rules)
+	if len(rules) != 4 {
+		t.Fatalf("want 4 rules got %d", len(rules))
 	}
-	if len(rules[0].Mutations) != 4 || len(rules[0].Matchers) != 10 {
-		t.Fatalf("mutations %d matchers %d", len(rules[0].Mutations), len(rules[0].Matchers))
+	for _, r := range rules {
+		if len(r.Mutations) != 1 {
+			t.Fatalf("rule %s mutations %d", r.ID, len(r.Mutations))
+		}
 	}
 }

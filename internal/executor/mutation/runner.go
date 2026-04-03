@@ -14,6 +14,7 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/executil"
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
@@ -225,32 +226,64 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 		mutRec.ID = mutID
 		executed++
 
-		diffRes := diffv1.EvaluateRuleMatchers(item.Rule, baseline, mutRec)
-		if diffRes.Incomplete {
-			warns = append(warns, fmt.Sprintf("diff_incomplete:%s:%s", item.Candidate.RuleID, strings.Join(diffRes.Reasons, ";")))
+		diffWrap := diffv1.EvaluateRuleMatchersWithOutcomes(item.Rule, baseline, mutRec)
+		if diffWrap.Incomplete {
+			warns = append(warns, fmt.Sprintf("diff_incomplete:%s:%s", item.Candidate.RuleID, strings.Join(diffWrap.Reasons, ";")))
 			_ = r.Store.UpdateMutationState(ctx, scanID, storage.MutationState{
 				Status: "in_progress", Total: total, Done: executed,
 			})
 			continue
 		}
-		if diffRes.Pass {
+		if diffWrap.Pass {
 			summary := fmt.Sprintf("rule %s matched for %s %s (%s)", item.Rule.ID, ep.Method, ep.PathTemplate, item.Candidate.Detail)
-			diffSummary := strings.Join(diffRes.Reasons, "; ")
+			diffSummary := strings.Join(diffWrap.Reasons, "; ")
 			if diffSummary == "" {
 				diffSummary = "all_matchers_passed"
+			}
+			evidenceComplete := strings.TrimSpace(baseline.ID) != "" && strings.TrimSpace(mutID) != "" &&
+				baseline.ResponseStatus > 0 && mutRec.ResponseStatus > 0 && strings.TrimSpace(diffSummary) != ""
+			tier, assessNotes := findings.AssessFindingTier(
+				findings.Severity(strings.TrimSpace(item.Rule.Severity)),
+				item.Rule.Confidence,
+				rules.RuleUsesWeakMatcherSignal(item.Rule),
+				evidenceComplete,
+			)
+			diffPts := append([]string(nil), diffWrap.Reasons...)
+			for _, o := range diffWrap.Outcomes {
+				if strings.TrimSpace(o.Summary) != "" {
+					diffPts = append(diffPts, string(o.Kind)+": "+o.Summary)
+				}
+			}
+			summaryRaw, jerr := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
+				RuleID:                 item.Rule.ID,
+				BaselineExecutionID:    baseline.ID,
+				MutatedExecutionID:     mutID,
+				EndpointMethod:         ep.Method,
+				EndpointPathTemplate:   ep.PathTemplate,
+				MatcherOutcomes:        matcherOutcomeSummaries(diffWrap.Outcomes),
+				DiffPoints:             diffPts,
+				ConfidenceTier:         tier,
+				RuleSeverity:           item.Rule.Severity,
+				RuleDeclaredConfidence: item.Rule.Confidence,
+				AssessmentNotes:        assessNotes,
+			})
+			summaryBytes := []byte(summaryRaw)
+			if jerr != nil {
+				summaryBytes = []byte(`{}`)
 			}
 			fin, ferr := r.Store.CreateFinding(ctx, storage.CreateFindingInput{
 				ScanID:              scanID,
 				RuleID:              item.Rule.ID,
 				Category:            item.Rule.Category,
 				Severity:            findings.Severity(item.Rule.Severity),
-				Confidence:          item.Rule.Confidence,
+				Confidence:          tier,
 				Summary:             summary,
+				EvidenceSummary:     summaryBytes,
 				ScanEndpointID:      ep.ID,
 				BaselineExecutionID: baseline.ID,
 				MutatedExecutionID:  mutID,
 				EvidenceURI:         "",
-				FindingStatus:       "confirmed",
+				FindingStatus:       tier,
 				Evidence: storage.CreateEvidenceInput{
 					BaselineRequest: requestSnapshot(baseline),
 					MutatedRequest:  requestSnapshot(mutRec),
@@ -310,4 +343,17 @@ func requestSnapshot(rec engine.ExecutionRecord) string {
 	}
 	b, _ := json.Marshal(m)
 	return string(b)
+}
+
+func matcherOutcomeSummaries(in []diffv1.MatcherOutcome) []findings.MatcherOutcomeSummary {
+	out := make([]findings.MatcherOutcomeSummary, len(in))
+	for i := range in {
+		out[i] = findings.MatcherOutcomeSummary{
+			Index:   in[i].Index,
+			Kind:    in[i].Kind,
+			Passed:  in[i].Passed,
+			Summary: in[i].Summary,
+		}
+	}
+	return out
 }

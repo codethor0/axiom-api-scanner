@@ -1,0 +1,26 @@
+id: axiom.pathnorm.variant.v1
+name: Path normalization bypass probe (double-slash variant)
+category: improper_asset_management
+severity: medium
+confidence: medium
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods:
+    - GET
+  where: path
+prerequisites: []
+mutations:
+  - kind: path_normalization_variant
+    style: double_slash
+matchers:
+  - kind: status_code_unchanged
+  - kind: response_body_similarity
+    min_score: 0.85
+references:
+  - OWASP API Security - Unauthenticated Access / path normalization issues
+  - https://cwe.mitre.org/data/definitions/22.html
+tags:
+  - path_normalization
+  - access_control

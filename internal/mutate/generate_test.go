@@ -15,8 +15,8 @@ category: c
 severity: high
 confidence: high
 safety:
-  mode: safe
-  destructive: false
+  mode: full
+  destructive: true
 target:
   methods: [GET]
   where: path

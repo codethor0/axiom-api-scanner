@@ -13,7 +13,7 @@
 | Unit | Rule validation, OpenAPI `ExtractEndpointSpecs`, path template helper, V1 planner, mutation generator, `internal/diff/v1` matchers, `internal/executil` redaction, mutation `BuildRequest` scope checks. |
 | Handler | Scan create, control, OpenAPI, PATCH scan, executions list/detail, baseline/mutations contract cases using `httptest` and in-memory repository fakes (no database). |
 | Baseline | `internal/executor/baseline/runner_test` uses `httptest` plus in-memory store; performs one GET baseline. |
-| Integration | `internal/storage/postgres` when `AXIOM_TEST_DATABASE_URL` is set (runs `dbmigrate.Up` from `AXIOM_TEST_MIGRATIONS_DIR` or `./migrations`, including `000004` for mutation or finding columns). |
+| Integration | `internal/storage/postgres` when `AXIOM_TEST_DATABASE_URL` is set (runs `dbmigrate.Up` from `AXIOM_TEST_MIGRATIONS_DIR` or repo-root `migrations/`, through `000005_finding_evidence_summary` and earlier). |
 | End-to-end | Full scan with findings against a live target (future). |
 
 ## Fixtures
@@ -29,7 +29,7 @@ go vet ./...
 
 The module `go` directive may require a newer toolchain than 1.22; use the version named in `go.mod`.
 
-PostgreSQL-backed tests live in `internal/storage/postgres`. They apply **all** migrations from `migrations/` (including `000004_mutation_findings`) via `internal/dbmigrate` on each run. Required environment variable:
+PostgreSQL-backed tests live in `internal/storage/postgres`. They apply **all** migrations from `migrations/` (including finding `evidence_summary`) via `internal/dbmigrate` on each run. Required environment variable:
 
 | Variable | Purpose |
 | --- | --- |
@@ -61,7 +61,7 @@ export AXIOM_TEST_DATABASE_URL='postgres://postgres:test@127.0.0.1:54333/axiom_v
 go test ./internal/storage/postgres/... -count=1 -v
 ```
 
-Migrations run in order through the latest file (currently `000004_mutation_findings`); `dbmigrate.Up` stops on the first apply error.
+Migrations run in order through the latest file (currently `000005_finding_evidence_summary`); `dbmigrate.Up` stops on the first apply error.
 
 Integration tests: `TestScanLifecycle_integration`, `TestEndpointReplace_integration`, `TestFindingWrite_integration`. They are skipped when `AXIOM_TEST_DATABASE_URL` is unset.
 

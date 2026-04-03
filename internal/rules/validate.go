@@ -53,6 +53,12 @@ func Validate(r Rule) error {
 	if len(r.References) == 0 {
 		errs = append(errs, "references must include at least one citation")
 	}
+	if err := ValidateRuleConfidence(r); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := ValidateSafePassiveV1(r); err != nil {
+		errs = append(errs, err.Error())
+	}
 	if len(errs) == 0 {
 		return nil
 	}

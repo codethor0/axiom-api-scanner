@@ -1,0 +1,31 @@
+id: axiom.ratelimit.header_rotate.v1
+name: Rate-limit header rotation probe (forwarded client identity)
+category: lack_of_resources_and_rate_limiting
+severity: medium
+confidence: medium
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods:
+    - GET
+    - POST
+  where: path
+prerequisites: []
+mutations:
+  - kind: rotate_request_headers
+    headers:
+      - name: X-Forwarded-For
+        value: 127.0.0.2
+      - name: X-Real-IP
+        value: 10.0.0.1
+matchers:
+  - kind: status_code_unchanged
+  - kind: response_header_differs_from_baseline
+    name: X-RateLimit-Remaining
+references:
+  - OWASP API Security 2023 - API4:2023 Unrestricted Resource Consumption
+  - https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/
+tags:
+  - rate_limiting
+  - abuse_case

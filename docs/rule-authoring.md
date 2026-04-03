@@ -9,8 +9,8 @@ Rules are YAML documents. Each file may contain multiple documents. Loading walk
 | `id` | Stable identifier |
 | `name` | Human title |
 | `category` | Taxonomy bucket |
-| `severity` | Reported severity |
-| `confidence` | Expected signal quality |
+| `severity` | Reported severity (feeds finding tier together with matchers and evidence) |
+| `confidence` | Declared signal quality: **`high`**, **`medium`**, or **`low`** only (stored on the rule; `low` caps findings at **tentative**) |
 | `safety.mode` | `passive`, `safe`, or `full` |
 | `safety.destructive` | Boolean |
 | `target.methods` | HTTP methods |
@@ -22,6 +22,26 @@ Rules are YAML documents. Each file may contain multiple documents. Loading walk
 | `tags` | Labels |
 
 Unknown `kind` values in mutations or matchers fail validation at load time.
+
+## V1 safe and passive semantics (current supported families)
+
+Supported planner families remain: **IDOR** (path or query swap), **mass assignment** (JSON merge), **path normalization** variants, **rate-limit / abuse** header rotation.
+
+When `safety.mode` is **`safe`** or **`passive`**:
+
+- **Exactly one mutation** per rule. Model each check as its own rule document (multi-document YAML files are fine). `full` mode may still list multiple mutations for advanced packs.
+- Matchers must not contradict each other (for example do not combine `status_code_unchanged` with `status_differs_from_baseline`).
+- **Family-specific matcher allowlists:** IDOR, mass assignment, and path normalization rules may use body or status-oriented matchers only (`header_present`, `header_absent`, and `response_header_differs_from_baseline` are rejected there). **Rate-limit header** rules must include at least one header-oriented matcher among those three plus may combine status/body matchers.
+- **`response_body_similarity.min_score`** must be **>= 0.75** on safe/passive rules. Similarity below **0.9** still counts as a **weak signal** at finding time (findings stay **tentative** even when matchers pass).
+
+## Finding confidence and `evidence_summary`
+
+When matchers pass with complete HTTP evidence, the service persists:
+
+- **`confidence`** and **`status`** on the finding row: both use the assessed tier **`confirmed`**, **`tentative`**, or **`incomplete`** (no ML). **`incomplete`** is used when baseline or mutated execution ids are missing, either side has HTTP status `0`, or the diff summary is empty. **`tentative`** applies when the rule declared `low` confidence, severity is `info` or `low`, or a weak matcher signal is configured (substring matcher, or similarity threshold under `0.9`).
+- **`evidence_summary`** (JSON, `schema_version` **1**): `rule_id`, baseline and mutated `execution` ids, endpoint method/path template, `matcher_outcomes` (index, kind, pass, summary line), `diff_points` (evaluator reasons plus matcher notes), `confidence_tier`, `rule_severity`, `rule_declared_confidence`, optional `assessment_notes`.
+
+Rule YAML `confidence` does **not** overwrite the stored tier; it is copied into `evidence_summary.rule_declared_confidence` for audit.
 
 ## V1 mutation kinds
 
@@ -38,15 +58,19 @@ Unknown `kind` values in mutations or matchers fail validation at load time.
 | `kind` | Required fields |
 | --- | --- |
 | `status_code_unchanged` | none |
-| `response_body_similarity` | `min_score` (0 through 1 inclusive) |
+| `status_differs_from_baseline` | none |
+| `response_body_similarity` | `min_score` (0 through 1 inclusive; >= 0.75 on safe/passive) |
+| `response_body_substring` | `substring` (non-empty) |
 | `json_path_absent` | `path` (non-empty) |
+| `json_path_equals` | `path`, `value` |
 | `status_in` | `allowed` (non-empty array of integer HTTP status codes) |
 | `header_present` | `name` (non-empty) |
 | `header_absent` | `name` (non-empty) |
+| `response_header_differs_from_baseline` | `name` (non-empty) |
 
 ## Example: IDOR path swap
 
-See `rules/builtin/idor_path_swap.example.yaml`.
+See `rules/builtin/idor_path_swap.example.yaml`. Other production-shaped examples: `mass_assignment_privilege.example.yaml`, `path_normalization_bypass.example.yaml`, `rate_limit_header_rotation.example.yaml`.
 
 ## Example: passive probe with query swap
 

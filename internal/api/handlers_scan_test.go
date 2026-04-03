@@ -239,6 +239,9 @@ func (m *memRepositories) CreateFinding(_ context.Context, in storage.CreateFind
 		Status:               st,
 		CreatedAt:            now,
 	}
+	if len(in.EvidenceSummary) > 0 {
+		f.EvidenceSummary = in.EvidenceSummary
+	}
 	m.byFind[id] = f
 	m.byScan[in.ScanID] = append(m.byScan[in.ScanID], f)
 	m.evidence[id] = findings.EvidenceArtifact{

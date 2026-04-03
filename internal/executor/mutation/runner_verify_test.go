@@ -89,7 +89,11 @@ func (m *memMutationStore) CreateFinding(_ context.Context, in storage.CreateFin
 		ID:                   id,
 		ScanID:               in.ScanID,
 		RuleID:               in.RuleID,
+		Category:             in.Category,
+		Severity:             in.Severity,
+		Confidence:           in.Confidence,
 		Summary:              in.Summary,
+		EvidenceSummary:      in.EvidenceSummary,
 		ScanEndpointID:       in.ScanEndpointID,
 		BaselineExecutionID:  in.BaselineExecutionID,
 		MutatedExecutionID:   in.MutatedExecutionID,
@@ -230,8 +234,8 @@ func TestRunner_createsFindingWhenMatchersPass(t *testing.T) {
 	ru := rules.Rule{
 		ID:         "rule.ok",
 		Category:   "test",
-		Severity:   "low",
-		Confidence: "low",
+		Severity:   "high",
+		Confidence: "high",
 		Target:     rules.RuleTarget{Methods: []string{"GET"}, Where: "path_params"},
 		Mutations: []rules.Mutation{
 			{Kind: rules.MutationReplacePathParam, ReplacePathParam: &rules.ReplacePathParamMutation{
@@ -240,7 +244,7 @@ func TestRunner_createsFindingWhenMatchersPass(t *testing.T) {
 		},
 		Matchers: []rules.Matcher{
 			{Kind: rules.MatcherStatusCodeUnchanged},
-			{Kind: rules.MatcherResponseBodySimilarity, ResponseBodySimilarity: &rules.ResponseBodySimilarityMatcher{MinScore: 0.5}},
+			{Kind: rules.MatcherResponseBodySimilarity, ResponseBodySimilarity: &rules.ResponseBodySimilarityMatcher{MinScore: 0.95}},
 		},
 	}
 
@@ -260,6 +264,12 @@ func TestRunner_createsFindingWhenMatchersPass(t *testing.T) {
 	}
 	if st.lastFinding.BaselineExecutionID != "base-1" {
 		t.Fatal(st.lastFinding)
+	}
+	if st.lastFinding.Confidence != "confirmed" || st.lastFinding.Status != "confirmed" {
+		t.Fatalf("want confirmed tier got conf=%q status=%q", st.lastFinding.Confidence, st.lastFinding.Status)
+	}
+	if len(st.lastFinding.EvidenceSummary) == 0 {
+		t.Fatal("expected evidence_summary json")
 	}
 }
 

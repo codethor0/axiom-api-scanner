@@ -277,6 +277,9 @@ func TestFindingWrite_integration(t *testing.T) {
 	if got.Summary != "integration finding" {
 		t.Fatal(got)
 	}
+	if len(got.EvidenceSummary) == 0 {
+		t.Fatal("expected default evidence_summary from insert")
+	}
 	ev, err := s.GetArtifactByFindingID(ctx, fin.ID)
 	if err != nil {
 		t.Fatal(err)

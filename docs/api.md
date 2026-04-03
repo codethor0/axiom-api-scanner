@@ -106,13 +106,13 @@ Returns one execution record when it belongs to the scan. `404` when missing or 
 
 ### GET /v1/scans/{scanID}/findings
 
-Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete evidence.
+Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each row includes an assessed `confidence` tier and `status` (both mirror the same tier today: `confirmed`, `tentative`, or `incomplete`) plus optional `evidence_summary` JSON (schema version 1: rule id, execution ids, matcher outcome lines, diff points, declared rule confidence).
 
 ## Findings
 
 ### GET /v1/findings/{findingID}
 
-Returns a finding row, including `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, and `status` when set.
+Returns a finding row, including `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, `confidence` (tier), `status` (tier), human `summary`, and `evidence_summary` (structured JSON) when persisted.
 
 ### GET /v1/findings/{findingID}/evidence
 
