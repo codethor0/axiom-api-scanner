@@ -1,0 +1,31 @@
+id: axiom.idor.path_swap.v1
+name: Path parameter IDOR probe (swap)
+category: broken_object_level_authorization
+severity: high
+confidence: medium
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods:
+    - GET
+    - PATCH
+  where: path_params.id
+prerequisites:
+  - authenticated_session
+  - stable_object_reference
+mutations:
+  - kind: replace_path_param
+    param: id
+    from: self
+    to: foreign
+matchers:
+  - kind: status_code_unchanged
+  - kind: response_body_similarity
+    min_score: 0.85
+references:
+  - OWASP API Security 2023 - API1:2023 Broken Object Level Authorization
+  - https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/
+tags:
+  - idor
+  - authorization
