@@ -11,6 +11,8 @@ import (
 
 	"github.com/codethor0/axiom-api-scanner/internal/api"
 	"github.com/codethor0/axiom-api-scanner/internal/dbmigrate"
+	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
+	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
 	"github.com/codethor0/axiom-api-scanner/internal/storage/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -54,10 +56,15 @@ func main() {
 
 	store := postgres.NewStore(pool)
 	h := &api.Handler{
-		RulesDir: rulesDir,
-		Scans:    store,
-		Findings: store,
-		Evidence: store,
+		RulesDir:    rulesDir,
+		Scans:       store,
+		ScanTargets: store,
+		Endpoints:   store,
+		Executions:  store,
+		Findings:    store,
+		Evidence:    store,
+		Baseline:    baseline.NewRunner(store),
+		Mutations:   mutation.NewRunner(store),
 	}
 
 	srv := &http.Server{

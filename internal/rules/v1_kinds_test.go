@@ -42,6 +42,14 @@ matchers:
     name: X-RateLimit-Remaining
   - kind: header_absent
     name: Retry-After
+  - kind: status_differs_from_baseline
+  - kind: response_body_substring
+    substring: needle
+  - kind: json_path_equals
+    path: field
+    value: v
+  - kind: response_header_differs_from_baseline
+    name: ETag
 references:
   - https://example.com
 tags: [v1]
@@ -53,7 +61,7 @@ tags: [v1]
 	if len(rules) != 1 {
 		t.Fatal(rules)
 	}
-	if len(rules[0].Mutations) != 4 || len(rules[0].Matchers) != 6 {
+	if len(rules[0].Mutations) != 4 || len(rules[0].Matchers) != 10 {
 		t.Fatalf("mutations %d matchers %d", len(rules[0].Mutations), len(rules[0].Matchers))
 	}
 }

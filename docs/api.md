@@ -19,68 +19,125 @@ All successful JSON responses use explicit structs. Errors use this envelope:
 
 Creates a persisted scan in `queued` status.
 
-Request body:
-
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `target_label` | string | yes | Non-empty, max 256 characters |
 | `safety_mode` | string | yes | One of `passive`, `safe`, `full` |
 | `allow_full_execution` | boolean | yes | Must be `true` when `safety_mode` is `full` |
+| `base_url` | string | no | Absolute URL validated when present |
+| `auth_headers` | object | no | Map of header name to value applied on baseline and mutation requests |
 
-`full` mode is opt-in: requests with `safety_mode: full` and `allow_full_execution: false` are rejected with code `full_mode_requires_opt_in`.
+`full` mode remains opt-in (`full_mode_requires_opt_in` when misconfigured).
 
-Response: `201` with the persisted scan (`id` is a UUID, timestamps come from PostgreSQL).
+Response: `201` with `Scan` including `base_url`, `auth_headers`, baseline progress fields (`baseline_run_status`, `baseline_run_error`, `baseline_endpoints_total`, `baseline_endpoints_done`), mutation progress (`mutation_run_status`, `mutation_run_error`, `mutation_candidates_total`, `mutation_candidates_done`), and `findings_count`.
+
+### PATCH /v1/scans/{scanID}
+
+Updates target configuration without touching lifecycle `status`. JSON fields:
+
+- `base_url` (optional string): replaces the stored base URL when provided.
+- `auth_headers` (optional object): used only when `replace_auth_headers` is true; replaces headers.
+- `replace_auth_headers` (boolean, default false).
 
 ### GET /v1/scans/{scanID}
 
-Returns a scan by UUID. `404` with code `not_found` when absent. Invalid UUID syntax returns `400` with `invalid_scan_id`.
+Returns a scan by UUID. `404` when absent.
 
 ### POST /v1/scans/{scanID}/control
 
-Transitions scan state. Body: `{ "action": "start" | "pause" | "cancel" }`.
+Transitions scan lifecycle state only (`start`, `pause`, `cancel`). Baseline execution uses a separate route so lifecycle rules stay honest.
 
-Valid transitions:
+### POST /v1/scans/{scanID}/specs/openapi
 
-- `start`: `queued` or `paused` to `running`
-- `pause`: `running` to `paused`
-- `cancel`: `queued`, `running`, or `paused` to `canceled`
+Body: raw OpenAPI 3.x YAML or JSON (same limits as global validate). Persists endpoints for this scan (full replace). Response:
 
-Invalid actions return `400` (`invalid_control_action`). Invalid transitions return `409` (`invalid_state_transition`). Unknown scan returns `404`.
+```json
+{
+  "scan_id": "uuid",
+  "endpoints": [ { "method": "GET", "path": "/...", ... } ],
+  "count": 1
+}
+```
+
+### GET /v1/scans/{scanID}/endpoints
+
+Returns persisted `ScanEndpoint` rows (JSON array), ordered by `path_template` then `method`.
+
+### POST /v1/scans/{scanID}/executions/baseline
+
+Runs one sequential baseline pass: GET and JSON POST operations only, against `base_url`, using imported path templates with placeholder substitution. Persists `execution_records` and updates baseline counters on the scan. Response `200` with:
+
+- `result`: machine-readable runner output (`status`, counts, record ids, skips, warnings)
+- `plan_by_endpoint`: planner decisions per imported endpoint (from rules in `AXIOM_RULES_DIR`)
+- `mutation_candidates`: capped list of deterministic candidates from eligible rules
+
+Failure to run (for example missing `base_url` or endpoints) yields `result.status` of `failed` and an `error` string inside `result`; the HTTP status remains `200` unless persistence itself errors.
+
+### POST /v1/scans/{scanID}/executions/mutations
+
+Runs one sequential mutation pass for all eligible V1 work items derived from imported endpoints and rules in `AXIOM_RULES_DIR`. Requires a successful prior baseline on the scan (`baseline_run_status` must be `succeeded`). Uses GET and JSON POST only; enforces the same URL scope rules as baseline; stores phase `mutated` execution rows; evaluates matchers against the latest baseline per endpoint; creates findings only when diff evaluation completes without `incomplete`. Response `200` with:
+
+```json
+{
+  "result": {
+    "status": "succeeded",
+    "candidates_total": 0,
+    "candidates_executed": 0,
+    "candidates_skipped": 0,
+    "mutated_execution_ids": [],
+    "finding_ids": [],
+    "warnings": []
+  }
+}
+```
+
+If baseline is missing or not `succeeded`, `result.status` is `failed` with `baseline_must_succeed_first`.
+
+### GET /v1/scans/{scanID}/executions
+
+Lists `ExecutionRecord` rows for the scan, oldest first. Optional query parameters:
+
+- `phase`: `baseline` or `mutated`
+- `scan_endpoint_id`: UUID of an imported endpoint
+
+### GET /v1/scans/{scanID}/executions/{executionID}
+
+Returns one execution record when it belongs to the scan. `404` when missing or mismatched.
 
 ### GET /v1/scans/{scanID}/findings
 
-Lists findings for the scan. Returns `404` if the scan does not exist. Empty list is `[]` when there are no rows.
+Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete evidence.
 
 ## Findings
 
 ### GET /v1/findings/{findingID}
 
-Returns a finding row. `404` when missing.
+Returns a finding row, including `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, and `status` when set.
 
 ### GET /v1/findings/{findingID}/evidence
 
-Returns the first evidence artifact row for the finding. `404` when none exists.
+Returns finding-bound evidence from the legacy `evidence_artifacts` table (not the same as `execution_records`).
 
 ## Rules
 
 ### GET /v1/rules
 
-Returns validated YAML rules from `AXIOM_RULES_DIR`, including typed `mutations` and `matchers`.
+Returns validated YAML rules from `AXIOM_RULES_DIR`.
 
 ## OpenAPI
 
 ### POST /v1/specs/openapi/validate
 
-Body: raw OpenAPI 3.x YAML or JSON (max 10 MiB). Response: `{ "status": "valid" }` on success.
+Validates OpenAPI and returns `{ "status": "valid" }`.
 
 ### POST /v1/specs/openapi/import
 
-Body: same as validate. Response: `{ "endpoints": [...], "count": N }`.
+Returns `{ "endpoints": [ EndpointSpec ... ], "count": N }` without persisting to a scan.
+
+## Verifying persistence
+
+Postgres-backed behaviors (migrations through the latest version, `CreateFinding`, execution list, full endpoint replace) are exercised by `go test ./internal/storage/postgres/...` when `AXIOM_TEST_DATABASE_URL` is set. See [testing.md](testing.md) for the exact variables and a Docker example.
 
 ## Service configuration errors
 
-If scan persistence is not wired, scan and finding routes return `503` with `service_unavailable`. The production `cmd/api` binary always configures PostgreSQL repositories when `DATABASE_URL` is set.
-
-## Operational limits
-
-OpenAPI upload bodies are capped at 10 MiB. JSON bodies for scan and control requests are capped at 1 MiB.
+Scan routes return `503` with `service_unavailable` when the backing repository is not wired. Baseline additionally requires `Baseline` runner configuration (production `cmd/api` sets this).

@@ -16,6 +16,10 @@ const (
 	MatcherStatusIn               MatcherKind = "status_in"
 	MatcherHeaderPresent          MatcherKind = "header_present"
 	MatcherHeaderAbsent           MatcherKind = "header_absent"
+	MatcherStatusDiffersFromBaseline            MatcherKind = "status_differs_from_baseline"
+	MatcherResponseBodySubstring               MatcherKind = "response_body_substring"
+	MatcherJSONPathEquals                      MatcherKind = "json_path_equals"
+	MatcherResponseHeaderDiffersFromBaseline   MatcherKind = "response_header_differs_from_baseline"
 )
 
 // ResponseBodySimilarityMatcher compares normalized bodies with a minimum score.
@@ -43,6 +47,22 @@ type HeaderAbsentMatcher struct {
 	Name string `json:"name" yaml:"name"`
 }
 
+// ResponseBodySubstringMatcher checks the normalized mutated body for a literal substring.
+type ResponseBodySubstringMatcher struct {
+	Substring string `json:"substring" yaml:"substring"`
+}
+
+// JSONPathEqualsMatcher checks a JSON value at a simple dot path (objects only in V1).
+type JSONPathEqualsMatcher struct {
+	Path  string `json:"path" yaml:"path"`
+	Value string `json:"value" yaml:"value"`
+}
+
+// ResponseHeaderDiffersFromBaselineMatcher checks baseline vs mutated header values differ.
+type ResponseHeaderDiffersFromBaselineMatcher struct {
+	Name string `json:"name" yaml:"name"`
+}
+
 // Matcher is a discriminated union validated per kind.
 type Matcher struct {
 	Kind                   MatcherKind                    `json:"kind" yaml:"kind"`
@@ -51,6 +71,9 @@ type Matcher struct {
 	StatusIn               *StatusInMatcher               `json:"-" yaml:"-"`
 	HeaderPresent          *HeaderPresentMatcher          `json:"-" yaml:"-"`
 	HeaderAbsent           *HeaderAbsentMatcher           `json:"-" yaml:"-"`
+	ResponseBodySubstring  *ResponseBodySubstringMatcher  `json:"-" yaml:"-"`
+	JSONPathEquals         *JSONPathEqualsMatcher         `json:"-" yaml:"-"`
+	ResponseHeaderDiffersFromBaseline *ResponseHeaderDiffersFromBaselineMatcher `json:"-" yaml:"-"`
 }
 
 // MarshalJSON flattens matcher fields for API output.
@@ -76,6 +99,19 @@ func (m Matcher) MarshalJSON() ([]byte, error) {
 	case MatcherHeaderAbsent:
 		if m.HeaderAbsent != nil {
 			out["name"] = m.HeaderAbsent.Name
+		}
+	case MatcherResponseBodySubstring:
+		if m.ResponseBodySubstring != nil {
+			out["substring"] = m.ResponseBodySubstring.Substring
+		}
+	case MatcherJSONPathEquals:
+		if m.JSONPathEquals != nil {
+			out["path"] = m.JSONPathEquals.Path
+			out["value"] = m.JSONPathEquals.Value
+		}
+	case MatcherResponseHeaderDiffersFromBaseline:
+		if m.ResponseHeaderDiffersFromBaseline != nil {
+			out["name"] = m.ResponseHeaderDiffersFromBaseline.Name
 		}
 	}
 	return json.Marshal(out)
@@ -114,6 +150,21 @@ func ParseMatcherFromMap(m map[string]any) (Matcher, error) {
 		return mat, mat.Validate()
 	case MatcherHeaderAbsent:
 		mat := Matcher{Kind: kind, HeaderAbsent: &HeaderAbsentMatcher{Name: stringField(m, "name")}}
+		return mat, mat.Validate()
+	case MatcherStatusDiffersFromBaseline:
+		mat := Matcher{Kind: kind}
+		return mat, mat.Validate()
+	case MatcherResponseBodySubstring:
+		mat := Matcher{Kind: kind, ResponseBodySubstring: &ResponseBodySubstringMatcher{Substring: stringField(m, "substring")}}
+		return mat, mat.Validate()
+	case MatcherJSONPathEquals:
+		mat := Matcher{Kind: kind, JSONPathEquals: &JSONPathEqualsMatcher{
+			Path:  stringField(m, "path"),
+			Value: stringField(m, "value"),
+		}}
+		return mat, mat.Validate()
+	case MatcherResponseHeaderDiffersFromBaseline:
+		mat := Matcher{Kind: kind, ResponseHeaderDiffersFromBaseline: &ResponseHeaderDiffersFromBaselineMatcher{Name: stringField(m, "name")}}
 		return mat, mat.Validate()
 	default:
 		return Matcher{}, fmt.Errorf("matcher: unknown kind %q", kind)
@@ -190,6 +241,20 @@ func (m Matcher) Validate() error {
 	case MatcherHeaderAbsent:
 		if m.HeaderAbsent == nil || strings.TrimSpace(m.HeaderAbsent.Name) == "" {
 			return fmt.Errorf("matcher header_absent: name is required")
+		}
+	case MatcherStatusDiffersFromBaseline:
+		return nil
+	case MatcherResponseBodySubstring:
+		if m.ResponseBodySubstring == nil || strings.TrimSpace(m.ResponseBodySubstring.Substring) == "" {
+			return fmt.Errorf("matcher response_body_substring: substring is required")
+		}
+	case MatcherJSONPathEquals:
+		if m.JSONPathEquals == nil || strings.TrimSpace(m.JSONPathEquals.Path) == "" {
+			return fmt.Errorf("matcher json_path_equals: path is required")
+		}
+	case MatcherResponseHeaderDiffersFromBaseline:
+		if m.ResponseHeaderDiffersFromBaseline == nil || strings.TrimSpace(m.ResponseHeaderDiffersFromBaseline.Name) == "" {
+			return fmt.Errorf("matcher response_header_differs_from_baseline: name is required")
 		}
 	default:
 		return fmt.Errorf("matcher: unknown kind %q", m.Kind)

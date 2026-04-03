@@ -51,13 +51,37 @@ Keep this version aligned with `github.com/golang-migrate/migrate/v4` in `go.mod
 ## Layout
 
 ```text
-cmd/api                 HTTP control plane (runs migrations, PostgreSQL pool)
-internal/api            HTTP handlers (depends on storage interfaces only)
-internal/dbmigrate      Programmatic migrate wrapper
-internal/storage        Repository interfaces and sentinel errors
-internal/storage/postgres  pgx implementations
-migrations              Versioned SQL (up/down pairs)
+cmd/api                    HTTP control plane (migrations, pool, baseline + mutation runners)
+internal/api               Handlers
+internal/dbmigrate         golang-migrate wrapper
+internal/engine            Domain types (scan, scan_endpoint, execution_record)
+internal/spec/openapi      OpenAPI extraction
+internal/plan/v1           V1 eligibility planner
+internal/mutate            Deterministic mutation candidates
+internal/pathutil          Path template helpers
+internal/executil          Scope, body normalization, header redaction for evidence
+internal/diff/v1           Baseline vs mutated matcher evaluation
+internal/executor/baseline Baseline HTTP runner
+internal/executor/mutation Mutation HTTP runner + request builder
+internal/storage           Repository interfaces
+internal/storage/postgres  pgx store
+migrations                 SQL versions
+rules                      YAML rule packs
 ```
+
+## Baseline execution notes
+
+- Configure `base_url` (create or `PATCH`) before `POST .../executions/baseline`.
+- Import OpenAPI for the scan first so `scan_endpoints` rows exist.
+- Only GET and POST-with-JSON-body endpoints run; others appear in `skipped_detail`.
+- Baseline does not increase scan lifecycle `status`; use control routes for that separately.
+
+## Mutation execution notes
+
+- Run baseline successfully before `POST .../executions/mutations` (`baseline_must_succeed_first` otherwise).
+- Mutations are sequential; scope and method support match baseline (GET + JSON POST).
+- Findings require rules in `AXIOM_RULES_DIR` with matchers the diff engine supports; incomplete evaluation skips finding creation.
+- Use `GET .../executions` and `GET .../executions/{id}` to inspect exchanges; sensitive headers are redacted in stored metadata.
 
 ## Testing
 
@@ -67,16 +91,24 @@ Unit and handler tests (no database):
 make test
 ```
 
-PostgreSQL integration test (optional migration and scan lifecycle smoke):
+PostgreSQL integration tests (`internal/storage/postgres`, see [testing.md](testing.md)) require a reachable server. If you use the Docker flow from [testing.md](testing.md), the Docker daemon must be running before `docker run`.
 
 ```text
 export AXIOM_TEST_DATABASE_URL='postgres://user:pass@localhost:5432/axiom_test?sslmode=disable'
 # Optional if not running from repo root:
 export AXIOM_TEST_MIGRATIONS_DIR=/absolute/path/to/migrations
+go test ./internal/storage/postgres/... -count=1 -v
+```
+
+Or, when wired in the Makefile:
+
+```text
 make test-integration
 ```
 
-When `AXIOM_TEST_DATABASE_URL` is unset, the integration test is skipped.
+When `AXIOM_TEST_DATABASE_URL` is unset, postgres integration tests are skipped.
+
+**Credential storage:** scan `auth_headers` are stored in PostgreSQL as part of scan configuration so the API can replay authenticated baselines and mutations. `execution_records` persist **redacted** request and response header maps for known sensitive names (for example `Authorization`, `Cookie`, `X-Api-Key`); values are not stored in plaintext in those artifacts.
 
 ## Formatting and build
 

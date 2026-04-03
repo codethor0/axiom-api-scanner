@@ -5,9 +5,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
+	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
+	"github.com/codethor0/axiom-api-scanner/internal/mutate"
+	v1plan "github.com/codethor0/axiom-api-scanner/internal/plan/v1"
 	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/spec/openapi"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
@@ -22,13 +28,21 @@ const (
 	safetyFull    = "full"
 )
 
+const maxMutationPreview = 40
+
 // Handler bundles HTTP dependencies for the control plane.
 type Handler struct {
 	RulesDir string
 
-	Scans    storage.ScanRepository
-	Findings storage.FindingRepository
-	Evidence storage.EvidenceMetadataRepository
+	Scans       storage.ScanRepository
+	ScanTargets storage.ScanTargetRepository
+	Endpoints   storage.EndpointRepository
+	Executions  storage.ExecutionRepository
+	Findings    storage.FindingRepository
+	Evidence    storage.EvidenceMetadataRepository
+
+	Baseline  *baseline.Runner
+	Mutations *mutation.Runner
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -39,8 +53,15 @@ func (h *Handler) Routes() chi.Router {
 	r.Use(middleware.Recoverer)
 
 	r.Post("/v1/scans", h.createScan)
+	r.Patch("/v1/scans/{scanID}", h.patchScan)
 	r.Get("/v1/scans/{scanID}", h.getScan)
 	r.Post("/v1/scans/{scanID}/control", h.controlScan)
+	r.Post("/v1/scans/{scanID}/specs/openapi", h.importOpenAPIScan)
+	r.Get("/v1/scans/{scanID}/endpoints", h.listScanEndpoints)
+	r.Post("/v1/scans/{scanID}/executions/baseline", h.runBaseline)
+	r.Post("/v1/scans/{scanID}/executions/mutations", h.runMutations)
+	r.Get("/v1/scans/{scanID}/executions", h.listExecutions)
+	r.Get("/v1/scans/{scanID}/executions/{executionID}", h.getExecution)
 	r.Get("/v1/scans/{scanID}/findings", h.listFindings)
 	r.Get("/v1/findings/{findingID}", h.getFinding)
 	r.Get("/v1/findings/{findingID}/evidence", h.getFindingEvidence)
@@ -69,10 +90,16 @@ func (h *Handler) createScan(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	auth := req.AuthHeaders
+	if auth == nil {
+		auth = map[string]string{}
+	}
 	in := storage.CreateScanInput{
 		TargetLabel:        strings.TrimSpace(req.TargetLabel),
 		SafetyMode:         strings.TrimSpace(req.SafetyMode),
 		AllowFullExecution: req.AllowFullExecution,
+		BaseURL:            strings.TrimSpace(req.BaseURL),
+		AuthHeaders:        auth,
 	}
 	scan, err := h.Scans.CreateScan(r.Context(), in)
 	if err != nil {
@@ -80,6 +107,44 @@ func (h *Handler) createScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, scan)
+}
+
+func (h *Handler) patchScan(w http.ResponseWriter, r *http.Request) {
+	if h.ScanTargets == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "scan persistence is not configured")
+		return
+	}
+	id, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	var req PatchScanRequest
+	if err = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+		return
+	}
+	if req.BaseURL != nil && strings.TrimSpace(*req.BaseURL) != "" {
+		if _, perr := url.Parse(strings.TrimSpace(*req.BaseURL)); perr != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid_base_url", "base_url must be a valid URL")
+			return
+		}
+	}
+	in := storage.PatchScanTargetInput{
+		BaseURL:     req.BaseURL,
+		AuthHeaders: req.AuthHeaders,
+		ReplaceAuth: req.ReplaceAuthHeaders,
+	}
+	scan, err := h.ScanTargets.PatchScanTarget(r.Context(), id, in)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not update scan")
+		return
+	}
+	writeJSON(w, http.StatusOK, scan)
 }
 
 func (h *Handler) getScan(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +203,263 @@ func (h *Handler) controlScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, scan)
+}
+
+func (h *Handler) importOpenAPIScan(w http.ResponseWriter, r *http.Request) {
+	if h.Endpoints == nil || h.Scans == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "persistence is not configured")
+		return
+	}
+	id, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	if _, gerr := h.Scans.GetScan(r.Context(), id); gerr != nil {
+		if errors.Is(gerr, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
+		return
+	}
+	data, err := readBody(r)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_body", err.Error())
+		return
+	}
+	specs, err := openapi.ExtractEndpointSpecs(r.Context(), data)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_openapi", err.Error())
+		return
+	}
+	if err := h.Endpoints.ReplaceScanEndpoints(r.Context(), id, specs); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not persist endpoints")
+		return
+	}
+	writeJSON(w, http.StatusOK, ScanOpenAPIImportResponse{ScanID: id, Endpoints: specs, Count: len(specs)})
+}
+
+func (h *Handler) listScanEndpoints(w http.ResponseWriter, r *http.Request) {
+	if h.Endpoints == nil || h.Scans == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "persistence is not configured")
+		return
+	}
+	id, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	if _, gerr := h.Scans.GetScan(r.Context(), id); gerr != nil {
+		if errors.Is(gerr, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
+		return
+	}
+	list, err := h.Endpoints.ListScanEndpoints(r.Context(), id)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
+		return
+	}
+	if list == nil {
+		list = []engine.ScanEndpoint{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (h *Handler) runBaseline(w http.ResponseWriter, r *http.Request) {
+	if h.Baseline == nil || h.Scans == nil || h.Endpoints == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "baseline execution is not configured")
+		return
+	}
+	id, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	if _, gerr := h.Scans.GetScan(r.Context(), id); gerr != nil {
+		if errors.Is(gerr, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
+		return
+	}
+
+	res, err := h.Baseline.Run(r.Context(), id)
+	if err != nil && res.Status == "" {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	ruleSet, _ := h.loadRules()
+	endpoints, _ := h.Endpoints.ListScanEndpoints(r.Context(), id)
+	resp := BaselineRunAPIResponse{
+		Result:             res,
+		PlanByEndpoint:     buildPlanSummaries(endpoints, ruleSet),
+		MutationCandidates: buildMutationPreview(endpoints, ruleSet),
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) runMutations(w http.ResponseWriter, r *http.Request) {
+	if h.Mutations == nil || h.Scans == nil || h.Endpoints == nil || h.Executions == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "mutation execution is not configured")
+		return
+	}
+	id, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	if _, gerr := h.Scans.GetScan(r.Context(), id); gerr != nil {
+		if errors.Is(gerr, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
+		return
+	}
+	ruleSet, err := h.loadRules()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "rule_load_failed", err.Error())
+		return
+	}
+	endpoints, err := h.Endpoints.ListScanEndpoints(r.Context(), id)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
+		return
+	}
+	work, werr := mutation.BuildWorkList(endpoints, ruleSet)
+	if werr != nil {
+		writeAPIError(w, http.StatusBadRequest, "mutation_worklist_failed", werr.Error())
+		return
+	}
+	res, rerr := h.Mutations.Run(r.Context(), id, work)
+	if rerr != nil && res.Status == "" {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", rerr.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, MutationRunAPIResponse{Result: res})
+}
+
+func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
+	if h.Executions == nil || h.Scans == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "execution persistence is not configured")
+		return
+	}
+	id, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	if _, gerr := h.Scans.GetScan(r.Context(), id); gerr != nil {
+		if errors.Is(gerr, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
+		return
+	}
+	filter := storage.ExecutionListFilter{
+		Phase:          strings.TrimSpace(r.URL.Query().Get("phase")),
+		ScanEndpointID: strings.TrimSpace(r.URL.Query().Get("scan_endpoint_id")),
+	}
+	list, err := h.Executions.ListExecutions(r.Context(), id, filter)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions")
+		return
+	}
+	if list == nil {
+		list = []engine.ExecutionRecord{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
+	if h.Executions == nil || h.Scans == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "execution persistence is not configured")
+		return
+	}
+	scanID, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	execID, err := parseUUIDParam(chi.URLParam(r, "executionID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_execution_id", "execution id must be a UUID")
+		return
+	}
+	if _, gerr := h.Scans.GetScan(r.Context(), scanID); gerr != nil {
+		if errors.Is(gerr, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
+		return
+	}
+	rec, err := h.Executions.GetExecution(r.Context(), scanID, execID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "execution not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load execution")
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+func (h *Handler) loadRules() ([]rules.Rule, error) {
+	if h.RulesDir == "" {
+		return nil, nil
+	}
+	return (rules.Loader{}).LoadDir(h.RulesDir)
+}
+
+func buildPlanSummaries(endpoints []engine.ScanEndpoint, ruleSet []rules.Rule) []EndpointPlanSummary {
+	out := make([]EndpointPlanSummary, 0, len(endpoints))
+	for _, ep := range endpoints {
+		out = append(out, EndpointPlanSummary{
+			EndpointID:   ep.ID,
+			PathTemplate: ep.PathTemplate,
+			Method:       ep.Method,
+			Decisions:    v1plan.Plan(ep, ruleSet),
+		})
+	}
+	return out
+}
+
+func buildMutationPreview(endpoints []engine.ScanEndpoint, ruleSet []rules.Rule) []mutate.Candidate {
+	byID := make(map[string]rules.Rule, len(ruleSet))
+	for _, ru := range ruleSet {
+		byID[ru.ID] = ru
+	}
+	var cands []mutate.Candidate
+outer:
+	for _, ep := range endpoints {
+		for _, d := range v1plan.Plan(ep, ruleSet) {
+			if !d.Eligible {
+				continue
+			}
+			ru, ok := byID[d.RuleID]
+			if !ok {
+				continue
+			}
+			mc, err := mutate.GenerateForEndpoint(ru, ep)
+			if err != nil {
+				continue
+			}
+			cands = append(cands, mc...)
+			if len(cands) >= maxMutationPreview {
+				break outer
+			}
+		}
+	}
+	return cands
 }
 
 func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +556,7 @@ func (h *Handler) validateOpenAPI(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_body", err.Error())
 		return
 	}
-	_, err = openapi.ExtractEndpoints(r.Context(), data)
+	_, err = openapi.ExtractEndpointSpecs(r.Context(), data)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_openapi", err.Error())
 		return
@@ -248,12 +570,12 @@ func (h *Handler) importOpenAPI(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_body", err.Error())
 		return
 	}
-	endpoints, err := openapi.ExtractEndpoints(r.Context(), data)
+	specs, err := openapi.ExtractEndpointSpecs(r.Context(), data)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_openapi", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, OpenAPIImportResponse{Endpoints: endpoints, Count: len(endpoints)})
+	writeJSON(w, http.StatusOK, OpenAPIImportResponse{Endpoints: specs, Count: len(specs)})
 }
 
 func readBody(r *http.Request) ([]byte, error) {
@@ -318,6 +640,12 @@ func validateCreateScanRequest(req CreateScanRequest) error {
 	}
 	if mode == safetyFull && !req.AllowFullExecution {
 		return &apiRequestError{code: "full_mode_requires_opt_in", message: "safety_mode full requires allow_full_execution true"}
+	}
+	if bu := strings.TrimSpace(req.BaseURL); bu != "" {
+		u, err := url.Parse(bu)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return &apiRequestError{code: "invalid_base_url", message: "base_url must be an absolute URL when provided"}
+		}
 	}
 	return nil
 }

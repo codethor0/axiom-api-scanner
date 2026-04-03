@@ -23,6 +23,12 @@ type Finding struct {
 	Confidence  string    `json:"confidence"`
 	Summary     string    `json:"summary"`
 	EvidenceURI string    `json:"evidence_uri"`
+	// ScanEndpointID links to the persisted OpenAPI operation row (optional).
+	ScanEndpointID string `json:"scan_endpoint_id,omitempty"`
+	// BaselineExecutionID and MutatedExecutionID reference execution_records when present.
+	BaselineExecutionID string `json:"baseline_execution_id,omitempty"`
+	MutatedExecutionID  string `json:"mutated_execution_id,omitempty"`
+	Status              string `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 

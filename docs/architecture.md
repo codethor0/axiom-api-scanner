@@ -1,45 +1,75 @@
 # Architecture
 
-This document describes the intended shape of Axiom at V1. The current tree includes models, typed rule loading, OpenAPI endpoint extraction, PostgreSQL-backed scan and finding metadata APIs, and golang-migrate-driven schema upgrades.
+This document describes the intended shape of Axiom at V1. The repository includes PostgreSQL-backed scans, imported OpenAPI endpoints per scan, baseline HTTP execution, sequential mutation execution for supported V1 rule families, a narrow baseline-vs-mutated diff engine, and finding creation when matchers pass with complete evidence. Threat-class language in rules and categories aligns with the [OWASP API Security Top 10](https://owasp.org/API-Security/) (for example API1 BOLA/IDOR and mass assignment) as a roadmap baseline, without claiming full coverage.
 
 ## Components
 
 ### Control plane (`cmd/api`, `internal/api`)
 
-The HTTP API creates scans, transitions scan state, lists findings, serves evidence pointers, lists and validates rules, and accepts OpenAPI documents for validation and import. Long-running work should move to the worker; the API remains the orchestration surface.
+The HTTP API creates and updates scans, imports OpenAPI specs per scan, lists imported endpoints, triggers baseline and mutation execution, lists execution records, transitions scan state, lists findings, serves finding-tied evidence rows, and exposes rules. Baseline and mutation runs execute in-process today; the worker binary remains a stub for future asynchronous work.
 
 ### Worker (`cmd/worker`)
 
-Executes scan plans: baseline requests, mutations, diffing, and evidence persistence. The current binary is a graceful-shutdown skeleton until the engine is connected.
+Placeholder process for future background execution. Baseline runs use `POST .../executions/baseline`; mutation passes use `POST .../executions/mutations`. Do not assume the worker performs them yet.
 
 ### Engine (`internal/engine`)
 
-Domain types for scans and endpoints. Future packages will host the planner (select endpoints and rules under safety and scope constraints), executor (HTTP client with audit trail), mutator pipeline, and diff engine.
-
-### Rules (`internal/rules`, `rules/`)
-
-YAML rule definitions are loaded from disk, parsed, and validated before execution. The DSL is a product surface: backward compatibility and schema versioning will matter as rules evolve.
+Domain types: `Scan` (including baseline and mutation progress plus `findings_count`), legacy `Endpoint` DTO, `ScanEndpoint` (persisted import row), `ExecutionRecord` (baseline or mutated traffic).
 
 ### OpenAPI (`internal/spec/openapi`)
 
-Loads OpenAPI 3.x specifications, validates them, and extracts a flat list of HTTP operations for planning.
+`ExtractEndpointSpecs` validates OpenAPI 3.x and returns a deterministic ordered list including method, path, security scheme names, request or response content types, and whether `application/json` is declared for the request body.
+
+### Planning (`internal/plan/v1`)
+
+Pure planner: given a `ScanEndpoint` and loaded `rules.Rule` set, emits deterministic eligibility decisions for V1 families (IDOR path or query swap, mass assignment, path normalization, rate-limit header rotation) with string reasons.
+
+### Mutation candidates (`internal/mutate`)
+
+Generates ordered, human-readable mutation candidates from a rule plus endpoint context. Does not perform HTTP.
+
+### Baseline executor (`internal/executor/baseline`)
+
+Sequential client for GET and JSON POST operations only. Joins `scan.base_url` with path templates using deterministic placeholder substitution (`pathutil`). Injects scan `auth_headers`, enforces URL prefix scope, redacts sensitive headers in persisted metadata, records `execution_records` rows (phase `baseline`). Rejects cross-origin redirects.
+
+### Mutation executor (`internal/executor/mutation`)
+
+Sequential HTTP for the same supported methods as baseline. Reuses `BuildRequest` for V1 mutations only (`BuildWorkList` ties planner output to candidates). Requires `baseline_run_status == succeeded` on the scan before running. Persists `execution_records` with phase `mutated` and optional `rule_id`, updates mutation counters on `scans`, and calls the diff engine after each exchange.
+
+### Diff (`internal/diff/v1`)
+
+Evaluates typed rule `matchers` for a baseline vs mutated `ExecutionRecord` pair with AND semantics. Unsupported matcher kinds yield an incomplete result (no finding). Prefers no finding when evaluation cannot be completed or matchers fail.
+
+### Rules (`internal/rules`, `rules/`)
+
+Typed YAML rules: mutations, matchers (including `status_differs_from_baseline`, `response_body_substring`, `json_path_equals`, `response_header_differs_from_baseline`, plus existing V1 kinds), loaded for planning, preview, mutation execution, and diffing.
 
 ### Findings (`internal/findings`)
 
-Finding and evidence artifact models. A valid finding must remain reproducible from stored evidence (baseline and mutated requests and responses, diff summary, rule identifier).
+Finding model includes linkage fields (`scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, `status`). Findings are inserted only from the mutation path when diff evaluation passes and is not incomplete; evidence rows summarize requests and normalized bodies plus a short diff summary.
+
+### Shared HTTP helpers (`internal/executil`)
+
+URL join and scope checks, response body normalization consistent with baseline evidence, header capture, and redaction of credential-like headers before persistence.
 
 ### Storage (`internal/storage`, `internal/storage/postgres`, `migrations/`)
 
-`internal/storage` defines narrow repository interfaces (`ScanRepository`, `FindingRepository`, `EvidenceMetadataRepository`) and shared errors. `internal/storage/postgres` implements those interfaces with `pgxpool`. Raw blob evidence remains behind the separate `EvidenceStore` interface (filesystem or object storage in production). SQL migrations are versioned pairs consumed by **golang-migrate** (see [development.md](development.md)).
+Repositories cover scans (target, auth, baseline and mutation progress, `findings_count`), endpoint replace or list, execution insert, list, and get-by-scan, findings list, get, and create (with evidence artifact and `findings_count` bump). SQL migrations via **golang-migrate** (see [development.md](development.md)).
 
-## Request flow (target)
+## Current execution flow (implemented)
 
-1. Import OpenAPI and validate scope.
-2. Build a plan: endpoints x rules filtered by safety mode, prerequisites, and tags.
-3. For each planned step, record baseline traffic, apply mutations, record mutated traffic, compute diff, evaluate matchers.
-4. Persist evidence first, then finding rows that reference evidence locations.
-5. Expose findings through the API with stable identifiers.
+1. Create scan; optionally set `base_url` and `auth_headers` at creation or via `PATCH`.
+2. `POST /v1/scans/{id}/specs/openapi` persists `scan_endpoints` for that scan (full replace; stale rows removed).
+3. `POST /v1/scans/{id}/executions/baseline` runs the baseline runner, writes baseline `execution_records`, updates baseline progress fields, returns runner output plus planner decisions and a capped mutation preview from `AXIOM_RULES_DIR`.
+4. `POST /v1/scans/{id}/executions/mutations` runs mutations sequentially from the same rule set (no broad concurrency). Writes mutated `execution_records`, runs diff vs the latest baseline per endpoint, and persists findings plus evidence when all matchers pass.
+5. `GET /v1/scans/{id}/executions` and `GET .../executions/{executionID}` return stored exchanges (optional `phase` and `scan_endpoint_id` query filters on the list).
+
+## Limitations (honest)
+
+- No worker offload, no parallel mutation flood, no arbitrary fuzzing.
+- Diff matchers are intentionally narrow; weak or ambiguous signals do not produce findings.
+- No automated mutated-vs-mutated comparisons; only baseline vs one mutated execution per candidate step.
 
 ## Observability
 
-Use structured logs with stable field names. Never log secrets, tokens, or raw credentials. Treat logs as event streams suitable for aggregation (Twelve-Factor).
+Use structured logs with stable field names. Never log secrets, tokens, or raw credentials. Treat logs as event streams suitable for aggregation (Twelve-Factor). Persisted request or response headers use the same redaction rules as baseline for known sensitive names.
