@@ -19,6 +19,18 @@ Aligned with **`rule_family_coverage`** in the API (see [benchmark-results.md](b
 
 Builtin example rules live under **`rules/builtin/`**; see [rule-authoring.md](rule-authoring.md).
 
+### What the four V1 families prove (in this project)
+
+On the **documented** local fixtures and rules, each family is **wired end-to-end**: OpenAPI-derived endpoints, bounded mutations, stored findings, and read APIs that expose **severity**, **assessment tier**, and **evidence-shaped** payloads. The **local benchmark** checks that **tier/outcome classes** for each family match a **published reference matrix** — that is **regression signal** for this codebase, not a claim about average severity in production.
+
+### What they do **not** prove
+
+- **Full** coverage of BOLA/mass-assignment/normalization/rate-limit variants in the wild, or every auth scheme and gateway combination.
+- That a **specific** external target will yield a finding for every family (rules are **bounded**; some rows are **fixture-limited** on purpose — see [benchmark-results.md](benchmark-results.md)).
+- **Superiority** versus any other product or OSS scanner; head-to-head methodology is **out of scope** for this repo’s docs unless explicitly run and attributed elsewhere.
+
+**Category wedge:** teams that want **evidence-first**, **low-blast-radius** triage on **OpenAPI-first** workflows — with **explicit safety modes** and **deterministic** V1 checks — versus tools that optimize for **maximum** catalog breadth or **enterprise** workflow depth on day one. Axiom is **narrow and explicit**; the comparison table below is **category-level**, not a feature scorecard.
+
 ## Reference landscape (category level only)
 
 Other tools **often** emphasize broader **API definition** imports, **larger** attack catalogs, or **enterprise** workflows. Examples frequently cited in the market (not exhaustive, not version-pinned here):

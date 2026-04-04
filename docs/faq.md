@@ -52,8 +52,19 @@ If **`docker pull`** fails with **unauthorized** or **denied**, the package may 
 | **CI** | Yes | Migration layout, `bash -n` on proof scripts, `go vet`, `golangci-lint`, `go test ./...` with Postgres |
 | **Local e2e** | No (`make e2e-local`) | Real Docker stack: API + Postgres + httpbin; curl/jq checks on scan lifecycle |
 | **Local benchmark** | No (`make benchmark-findings-local`) | Same stack + rate stub; **tier** and **`bench_summary`** matrix for V1 families |
+| **GHCR image** | No (you run it) | **Published** container starts against **your** Postgres; **`GET /v1/rules`** smoke — **no git clone** |
 
 **One-shot local recipe:** `make release-candidate-proof` (runs e2e then benchmark sequentially). See [testing.md](testing.md).
+
+**Three surfaces in one place:** [README.md](../README.md#proof-at-a-glance-three-separate-surfaces).
+
+## What is the shortest “clean machine” path to trust the GHCR image?
+
+Use Docker + **curl** only: pull **`ghcr.io/codethor0/axiom-api-scanner`** (tag of your choice), start **Postgres** on a user-defined network, run the API with **`DATABASE_URL`**, then **`curl -sf http://127.0.0.1:8080/v1/rules`**. Copy-paste steps: [README.md](../README.md#clean-machine-validation-ghcr). That validates **distribution and startup**, not benchmark/findings quality — for the latter, clone and run **`make benchmark-findings-local`** (see [benchmark-results.md](benchmark-results.md)).
+
+## Where do I report a problem after that smoke test?
+
+[CONTRIBUTING.md](../CONTRIBUTING.md#reporting-issues-after-external-validation) — use **Docker / GHCR** template for registry/pull issues; **Bug report** for false positives/negatives and auth/spec friction.
 
 ## Why did my Docker proof fail with “address already in use”?
 

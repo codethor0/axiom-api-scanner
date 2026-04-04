@@ -4,6 +4,20 @@ Axiom is a safe-by-default, **evidence-first**, **low-blast-radius** API abuse s
 
 **Release candidate:** **`v0.1.0-rc.1`** is **published** on GitHub ([release](https://github.com/codethor0/axiom-api-scanner/releases/tag/v0.1.0-rc.1), [CHANGELOG](CHANGELOG.md)). Launch copy and FAQs: [docs/announcement.md](docs/announcement.md), [docs/faq.md](docs/faq.md). **License:** [LICENSE](LICENSE) (MIT).
 
+## Proof at a glance (three separate surfaces)
+
+These are **independent**. Trust **all three** only if each one matches what you need; do not treat CI green as proof that a **pulled** image or **your** target behaved.
+
+| Surface | You need | What it demonstrates | Where |
+| --- | --- | --- | --- |
+| **CI proof** | Nothing locally | Migration layout, `go vet`, `golangci-lint`, `go test ./...` with Postgres in Actions, `bash -n` on proof scripts — **not** Docker e2e/benchmark or a real registry pull | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment) |
+| **Local source proof** | Git clone, Go, Docker (for full recipe) | API + fixtures: `make e2e-local`, `make benchmark-findings-local`, or **`make release-candidate-proof`** | [docs/testing.md](docs/testing.md), [docs/benchmark-results.md](docs/benchmark-results.md) |
+| **GHCR pull/run proof** | Docker + **curl** only (no clone) | The **published** API image boots against **your** Postgres and serves **`GET /v1/rules`** | [Clean machine validation](#clean-machine-validation-ghcr) below; workflow: [`.github/workflows/container-publish.yml`](.github/workflows/container-publish.yml) |
+
+**Outsider path (shortest):** pull image, start Postgres on a Docker network, run the container with `DATABASE_URL`, then **`curl -sf http://127.0.0.1:8080/v1/rules`**. Full copy-paste: [Clean machine validation](#clean-machine-validation-ghcr).
+
+**After that:** if anything fails or misleads, file a focused issue — [CONTRIBUTING.md](CONTRIBUTING.md#reporting-issues-after-external-validation) (points to templates).
+
 ## First evaluation (about 5–10 minutes)
 
 Pick **one** path; do not assume CI already ran Docker for you.
@@ -143,6 +157,10 @@ Shortest **external** check that the **published API image** runs (no git clone;
 5. In another terminal: **`curl -sf http://127.0.0.1:8080/v1/rules`** — expect **HTTP** **200** and JSON.
 
 **Contains:** **`cmd/api`** binary, **`/app/migrations`**, **`/app/rules`**. **Does not contain:** Postgres, scan fixtures, or the **e2e**/benchmark stacks. Remove containers/network when finished.
+
+### After clean-machine validation
+
+If the steps above **failed** (pull, multi-arch, startup, migrations, `curl`) or **passed** but you hit confusing packaging behavior, open a GitHub issue using **[Docker / GHCR image](https://github.com/codethor0/axiom-api-scanner/issues/new?template=docker_ghcr.md)** or **[Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md)**. Include **image tag** (e.g. `latest` or `sha-…`), **host OS/CPU**, **`docker version`**, redacted `DATABASE_URL` shape (no passwords), and the **exact** `curl`/HTTP error. For scanner **false positives/negatives** or **auth/spec gaps** after you use the API on a real target, use **Bug report** and check the matching feedback boxes — see [CONTRIBUTING.md](CONTRIBUTING.md#reporting-issues-after-external-validation).
 
 ## Quickstart (API on your Postgres)
 

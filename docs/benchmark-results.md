@@ -28,14 +28,17 @@ These are **bounded** check types aligned with **`rule_family_coverage`** in the
 **Proves (on the **local** `make benchmark-findings-local` fixtures only):**
 
 - The engine can run the **builtin example rules** against **httpbin** + a small **nginx rate stub** and persist **tiered** findings.
-- For each family, the **`bench_summary`** line matches the **reference matrix** below (rows, outcome class)—use it for **regression** detection, not for “real world average severity.”
+- For each **V1 family**, the harness produces a **`bench_summary`** outcome that matches the **reference matrix** below (row counts and **outcome class**). **Families are:** IDOR path/query swap, mass assignment privilege injection, path normalization bypass, rate limit header rotation — each is exercised according to the scan/fixture pairing in that table.
+- **Operator meaning:** the benchmark shows the **plumbing** (planning, execution, persistence, read APIs) and **stable** outcomes on **controlled** targets. It is the project’s **honest** regression oracle for those four families — **not** a statement that every family finds a bug on every target.
 
 **Does not prove:**
 
-- Coverage of **your** production routes, auth, or business rules.
-- Parity with **any other** scanner or commercial tool (no head-to-head runs are claimed here).
-- That **`rate_limit.header_rotate`** fires on **every** target (on httpbin it is often **`outcome_fixture_limited_no_row`** by design).
-- Anything about **CI** except that CI does **not** run this script—see [testing.md](testing.md#ci-vs-local).
+- Coverage of **your** production routes, auth flows, WAFs, API gateways, or business rules.
+- **Detection quality** on arbitrary real APIs (only the **bundled** OpenAPI fixtures and rules).
+- Parity with **any other** scanner or commercial tool — this document is **Axiom-only**; no comparative pass/fail rates are asserted.
+- That **`rate_limit.header_rotate`** yields a finding on **httpbin** (it is often **`outcome_fixture_limited_no_row`** by design — the matrix documents why).
+- That **CI** executed this flow: GitHub Actions does **not** run **`make benchmark-findings-local`** — see [testing.md](testing.md#ci-vs-local).
+- **External trust** in the **GHCR image**: that is a **separate** surface (image pull + `GET /v1/rules`); see [README.md](../README.md#clean-machine-validation-ghcr).
 
 ## Category
 

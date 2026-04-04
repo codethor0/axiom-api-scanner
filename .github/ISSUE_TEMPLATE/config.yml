@@ -5,4 +5,7 @@ contact_links:
     about: Report vulnerabilities per SECURITY.md instead of public issues when appropriate.
   - name: FAQ and scope
     url: https://github.com/codethor0/axiom-api-scanner/blob/main/docs/faq.md
-    about: CI vs local proof, V1 scope, and common setup questions.
+    about: CI vs local vs GHCR proof, V1 scope, and common setup questions.
+  - name: External validation (README)
+    url: https://github.com/codethor0/axiom-api-scanner/blob/main/README.md#proof-at-a-glance-three-separate-surfaces
+    about: Shortest paths — CI, clone+benchmark, or GHCR clean-machine curl.
