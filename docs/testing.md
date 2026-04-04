@@ -135,28 +135,32 @@ This runs `scripts/e2e_local.sh`, which:
 
 **Fixed target assumptions:** spec `servers` and scan `base_url` point at **`127.0.0.1:18080`** (httpbin from compose). Rules load from repo **`rules/`** via `AXIOM_RULES_DIR`. No outbound traffic leaves localhost except to that httpbin port.
 
+**Fixture (`testdata/e2e/httpbin-openapi.yaml`):** **`GET /anything/{id}`** declares **`ApiKeyAuth`** so **`security_scheme_hints`** are non-empty on that row. The builtin IDOR example rule lists **`authenticated_session`** among prerequisites; the planner requires declared security on the import for that prerequisite. Benchmark and e2e scans typically do **not** send **`auth_headers`** unless you add them; httpbin still serves **200** for these probes.
+
 **Proven when green:** safe V1 import, inventory, baseline + mutation persistence, execution and finding read models, run-status envelope shape, endpoint drilldown fragments, orchestrated run through `findings_complete`, and idempotent `resume` on an already-complete run.
 
-**What the harness does not prove:** crAPI/Juice Shop behavior, auth beyond optional separate targets, every rule family on every endpoint shape, or CI reproducibility (this flow is **local Docker only**).
+**What the harness does not prove:** crAPI/Juice Shop behavior, token validation for declared-secure operations, every rule family on every endpoint shape, or CI reproducibility (this flow is **local Docker only**).
+
+**Ad-hoc vs orchestration (`run.phase`):** After **`POST .../executions/baseline`** and **`POST .../executions/mutations`**, persisted **`run_phase`** remains the default **`planned`**; **`summary` / `progress`** counters and execution/finding rows still reflect completed work. **`GET .../run/status`** shows **`run.progression_source == "adhoc"`**, **`run.findings_recording_status == "complete"`** when the mutation pass succeeded, and **`run.phase == "planned"`** for that first scan. The orchestrated second scan shows **`run.progression_source == "orchestrator"`** and **`run.phase == "findings_complete"`**. Only **`POST .../run`** advances **`run_phase`** through the orchestration graph; **`progression_source`** distinguishes ad-hoc driver usage without new storage.
 
 ### Finding-quality benchmark (local, httpbin)
 
 **Entrypoint:** `make benchmark-findings-local` (runs `scripts/benchmark_findings_local.sh`).
 
-**Stack:** Same as `e2e-local`: `deploy/e2e/docker-compose.yml` (`axiom-pg` + httpbin), `bin/axiom-api-bench`, `DATABASE_URL` / `AXIOM_RULES_DIR` / migrations as in the e2e script. Target: `testdata/e2e/httpbin-openapi.yaml` and **`rules/`** (including **`rules/builtin/*.example.yaml`**).
+**Stack:** Same as `e2e-local`: `deploy/e2e/docker-compose.yml` (`axiom-pg` + httpbin), `bin/axiom-api-bench`, `DATABASE_URL` / `AXIOM_RULES_DIR` / migrations as in the e2e script. Target: **`testdata/e2e/httpbin-openapi.yaml`** and **`rules/`** ( **`rules/builtin/*.example.yaml`** ).
 
-**What it asserts (reproducible invariants, not full rule coverage):**
+**V1 families exercised (same single scan):**
 
-- After baseline + mutations succeed, **`GET .../findings`** returns at least one item.
-- Any finding for **`axiom.idor.path_swap.v1`** has **`assessment_tier`** **`tentative`** (builtin IDOR example uses **`response_body_similarity`** with **`min_score`** **0.85**, below the **0.9** “weak signal” cutoff in assessment).
-- Any finding for **`axiom.mass.privilege_merge.v1`** has **`assessment_tier`** **`confirmed`** (that example uses only non-weak matcher configuration).
-- When an IDOR row exists, its persisted **`summary`** includes the substring **`assessment: weak_matcher_signal`** so list/detail triage reflects tier rationale without opening **`evidence_summary`**.
+| Family | Builtin rule id | Proven outcome on this fixture |
+| --- | --- | --- |
+| IDOR path swap | **`axiom.idor.path_swap.v1`** | Exactly **one** finding, **`assessment_tier`** **`tentative`**; **`response_body_similarity`** @ **0.85** is a weak matcher signal; **`summary`** contains **`assessment: weak_matcher_signal`**. |
+| Mass assignment | **`axiom.mass.privilege_merge.v1`** | Exactly **one** finding, **`confirmed`**; strong matchers only. |
+| Path normalization | **`axiom.pathnorm.variant.v1`** | Exactly **one** finding, **`tentative`**; same weak similarity note in **`summary`**. |
+| Rate-limit headers | **`axiom.ratelimit.header_rotate.v1`** | **No** finding row: mutation may run, but **`response_header_differs_from_baseline`** on **`X-RateLimit-Remaining`** does not succeed against httpbin’s responses (header absent or unchanged). This is an intentional **no-finding** path, not a skipped family. |
 
-**What it does not prove:** Path-normalization and rate-limit example rules on this import may yield **no** findings if nothing is eligible or matchers do not pass; the benchmark does **not** require those families to fire. Only the two rules above have tier assertions. Third-party targets, crAPI, and broad false-positive rates are out of scope.
+**Read-path checks:** asserts **`GET .../run/status`** (**`progression_source`** **`adhoc`**, **`findings_recording_status`** **`complete`**), **`GET .../endpoints/{id}`** ( **`investigation`** + **`drilldown`** ), finding detail, and **`GET .../executions/{id}`** for the linked mutated execution.
 
-**Prerequisites:** `docker`, `curl`, `jq`, `go`. Teardown is the same compose file as e2e (`docker compose -f deploy/e2e/docker-compose.yml down` when finished).
-
-**Ad-hoc vs orchestration (`run.phase`):** After **`POST .../executions/baseline`** and **`POST .../executions/mutations`**, persisted **`run_phase`** remains the default **`planned`**; **`summary` / `progress`** counters and execution/finding rows still reflect completed work. **`GET .../run/status`** shows **`run.progression_source == "adhoc"`**, **`run.findings_recording_status == "complete"`** when the mutation pass succeeded, and **`run.phase == "planned"`** for that first scan. The orchestrated second scan shows **`run.progression_source == "orchestrator"`** and **`run.phase == "findings_complete"`**. Only **`POST .../run`** advances **`run_phase`** through the orchestration graph; **`progression_source`** distinguishes ad-hoc driver usage without new storage.
+**What it does not prove:** Query-swap IDOR variants (not in this spec), real rate-limit appliances, **`X-RateLimit-Remaining`** semantics on production targets, or coverage beyond the four builtin examples. Single-endpoint concurrency and large imports are out of scope.
 
 **Prerequisites:** `docker`, `curl`, `jq`, `go`.
 

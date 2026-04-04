@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Fixed local finding-quality benchmark: same stack as e2e-local (httpbin + Postgres + rules/builtin).
-# Proves tier expectations for safe V1 rules on testdata/e2e/httpbin-openapi.yaml (no third-party targets).
+# Covers all four supported V1 mutation families via testdata/e2e/httpbin-openapi.yaml + rule outcomes:
+#   - IDOR + path normalization: builtin examples use response_body_similarity@0.85 -> tentative + weak_matcher in summary
+#   - Mass assignment: strong matchers -> confirmed
+#   - Rate-limit header rotation: mutated httpbin responses do not satisfy header-diff matcher -> expect zero findings
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -73,7 +76,7 @@ curl -sf "$HTTPBIN_URL/get" | jq -e .url >/dev/null
 SCAN_ID="$(
   curl -sf -X POST "$AXIOM_URL/v1/scans" \
     -H 'Content-Type: application/json' \
-    -d '{"target_label":"bench-httpbin","safety_mode":"safe","allow_full_execution":false,"base_url":"'"$HTTPBIN_URL"'"}' |
+    -d '{"target_label":"bench-httpbin-v1-families","safety_mode":"safe","allow_full_execution":false,"base_url":"'"$HTTPBIN_URL"'"}' |
     jq -er .id
 )"
 
@@ -81,8 +84,13 @@ curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/specs/openapi" \
   -H 'Content-Type: application/x-yaml' \
   --data-binary @"$ROOT/testdata/e2e/httpbin-openapi.yaml" | jq -e '.count >= 1' >/dev/null
 
-curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/baseline" | jq -e '.result.status == "succeeded"' >/dev/null
+BASELINE_OUT="$(curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/baseline")"
+echo "$BASELINE_OUT" | jq -e '.result.status == "succeeded"' >/dev/null
 curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/mutations" | jq -e '.result.status == "succeeded"' >/dev/null
+
+RUN_STATUS="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/run/status")"
+echo "$RUN_STATUS" | jq -e '.run.progression_source == "adhoc"' >/dev/null
+echo "$RUN_STATUS" | jq -e '.run.findings_recording_status == "complete"' >/dev/null
 
 FINDINGS="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings")"
 N="$(echo "$FINDINGS" | jq '.items | length')"
@@ -92,31 +100,81 @@ if [[ "$N" -lt 1 ]]; then
 fi
 
 echo "==> benchmark: $N finding(s) on scan $SCAN_ID"
+echo "$FINDINGS" | jq -r '.items[] | "    finding: \(.rule_id) tier=\(.assessment_tier)"'
 
-# IDOR example rule uses response_body_similarity min_score 0.85 (< 0.9 weak-signal threshold) -> all such rows must be tentative.
-BAD_IDOR="$(echo "$FINDINGS" | jq '[.items[] | select(.rule_id == "axiom.idor.path_swap.v1" and .assessment_tier != "tentative")] | length')"
-if [[ "$BAD_IDOR" -ne 0 ]]; then
-  echo "benchmark failed: idor rule findings must be tentative (weak similarity threshold), got non-tentative count $BAD_IDOR" >&2
-  echo "$FINDINGS" | jq . >&2
-  exit 1
-fi
+RULE_IDOR="axiom.idor.path_swap.v1"
+RULE_MASS="axiom.mass.privilege_merge.v1"
+RULE_PATHNORM="axiom.pathnorm.variant.v1"
+RULE_RATELIMIT="axiom.ratelimit.header_rotate.v1"
 
-# Mass-assignment example uses only strong matchers -> any such finding must be confirmed.
-BAD_MASS="$(echo "$FINDINGS" | jq '[.items[] | select(.rule_id == "axiom.mass.privilege_merge.v1" and .assessment_tier != "confirmed")] | length')"
-if [[ "$BAD_MASS" -ne 0 ]]; then
-  echo "benchmark failed: mass-assignment rule findings must be confirmed (no weak matchers in rule), got bad count $BAD_MASS" >&2
-  echo "$FINDINGS" | jq . >&2
-  exit 1
-fi
-
-# If idor produced a row, summary should surface assessment notes (weak_matcher_signal) in the one-line summary.
-if echo "$FINDINGS" | jq -e 'any(.items[]?; .rule_id == "axiom.idor.path_swap.v1")' >/dev/null; then
-  IDOR_SUMMARIES="$(echo "$FINDINGS" | jq -r '.items[] | select(.rule_id == "axiom.idor.path_swap.v1") | .summary')"
-  if ! echo "$IDOR_SUMMARIES" | grep -q 'assessment: weak_matcher_signal'; then
-    echo "benchmark failed: expected idor finding summary to include assessment notes" >&2
-    echo "$IDOR_SUMMARIES" >&2
+expect_count() {
+  local rule="$1"
+  local want="$2"
+  local got
+  got="$(echo "$FINDINGS" | jq "[.items[] | select(.rule_id == \"$rule\")] | length")"
+  if [[ "$got" != "$want" ]]; then
+    echo "benchmark failed: expected $want finding(s) for $rule, got $got" >&2
+    echo "$FINDINGS" | jq . >&2
     exit 1
   fi
-fi
+}
 
-echo "OK: finding-quality benchmark passed (httpbin + builtin rules)."
+all_tier() {
+  local rule="$1"
+  local tier="$2"
+  local bad
+  bad="$(echo "$FINDINGS" | jq "[.items[] | select(.rule_id == \"$rule\" and .assessment_tier != \"$tier\")] | length")"
+  if [[ "$bad" != 0 ]]; then
+    echo "benchmark failed: all $rule findings must be $tier" >&2
+    echo "$FINDINGS" | jq . >&2
+    exit 1
+  fi
+}
+
+summaries_contain() {
+  local rule="$1"
+  local needle="$2"
+  if ! echo "$FINDINGS" | jq -e "any(.items[]?; .rule_id == \"$rule\")" >/dev/null; then
+    return 0
+  fi
+  local text
+  text="$(echo "$FINDINGS" | jq -r ".items[] | select(.rule_id == \"$rule\") | .summary")"
+  if ! echo "$text" | grep -q "$needle"; then
+    echo "benchmark failed: expected $rule summary to contain $needle" >&2
+    echo "$text" >&2
+    exit 1
+  fi
+}
+
+# Fixture + rules: expect exactly one row each for IDOR, mass, path norm; rate limit produces no finding on httpbin.
+expect_count "$RULE_IDOR" 1
+expect_count "$RULE_MASS" 1
+expect_count "$RULE_PATHNORM" 1
+expect_count "$RULE_RATELIMIT" 0
+
+all_tier "$RULE_IDOR" "tentative"
+all_tier "$RULE_MASS" "confirmed"
+all_tier "$RULE_PATHNORM" "tentative"
+
+summaries_contain "$RULE_IDOR" 'assessment: weak_matcher_signal'
+summaries_contain "$RULE_PATHNORM" 'assessment: weak_matcher_signal'
+
+# Read-path: endpoint detail for an endpoint that has findings.
+EP_ID="$(echo "$FINDINGS" | jq -er '.items[0].scan_endpoint_id')"
+EP_DETAIL="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/endpoints/$EP_ID")"
+echo "$EP_DETAIL" | jq -e '.drilldown.executions_list_path | startswith("/v1/")' >/dev/null
+echo "$EP_DETAIL" | jq -e '.investigation != null' >/dev/null
+
+# Execution detail: first finding's mutated execution (proves read path).
+F0="$(echo "$FINDINGS" | jq '.items[0]')"
+FID="$(echo "$F0" | jq -er .id)"
+FGET="$(curl -sf "$AXIOM_URL/v1/findings/$FID")"
+MEXEC="$(echo "$FGET" | jq -er '.mutated_execution_id // .evidence_summary.mutated_execution_id // empty')"
+if [[ -z "$MEXEC" ]]; then
+  echo "benchmark failed: could not resolve mutated_execution_id from finding detail" >&2
+  echo "$FGET" | jq . >&2
+  exit 1
+fi
+curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions/$MEXEC" | jq -e '.phase == "mutated"' >/dev/null
+
+echo "OK: finding-quality benchmark passed (httpbin + builtin rules, four V1 families)."
