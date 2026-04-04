@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
@@ -179,7 +180,7 @@ func (s *Store) ListExecutions(ctx context.Context, scanID string, filter storag
 		q += fmt.Sprintf(" AND response_status = $%d", n)
 		args = append(args, filter.ResponseStatus)
 	}
-	q += " ORDER BY created_at ASC"
+	q += " ORDER BY created_at ASC, id ASC"
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list executions: %w", err)
@@ -194,6 +195,133 @@ func (s *Store) ListExecutions(ctx context.Context, scanID string, filter storag
 		list = append(list, rec)
 	}
 	return list, rows.Err()
+}
+
+const phaseOrdExpr = `(CASE phase WHEN 'baseline' THEN 0 ELSE 1 END)`
+
+// ListExecutionsPage lists execution records using keyset pagination (stable for concurrent inserts relative to cursor).
+func (s *Store) ListExecutionsPage(ctx context.Context, scanID string, filter storage.ExecutionListFilter, opts storage.ExecutionListPageOptions) (storage.ExecutionListPage, error) {
+	if opts.Limit <= 0 {
+		return storage.ExecutionListPage{}, fmt.Errorf("list executions page: invalid limit")
+	}
+	sf := strings.TrimSpace(opts.SortField)
+	o := strings.TrimSpace(opts.SortOrder)
+	if o == "" {
+		o = storage.ListSortAsc
+	}
+	asc := strings.EqualFold(o, storage.ListSortAsc)
+
+	q := executionSelect + ` WHERE scan_id = $1`
+	args := []any{scanID}
+	n := 2
+	if filter.Phase != "" {
+		q += fmt.Sprintf(" AND phase = $%d", n)
+		args = append(args, filter.Phase)
+		n++
+	}
+	if filter.ScanEndpointID != "" {
+		q += fmt.Sprintf(" AND scan_endpoint_id = $%d", n)
+		args = append(args, filter.ScanEndpointID)
+		n++
+	}
+	if filter.RuleID != "" {
+		q += fmt.Sprintf(" AND rule_id = $%d", n)
+		args = append(args, filter.RuleID)
+		n++
+	}
+	if filter.ResponseStatus > 0 {
+		q += fmt.Sprintf(" AND response_status = $%d", n)
+		args = append(args, filter.ResponseStatus)
+		n++
+	}
+
+	if strings.TrimSpace(opts.Cursor) != "" {
+		ts, id, pOrd, sOrd, err := storage.DecodeListCursor(opts.Cursor, sf, o)
+		if err != nil {
+			return storage.ExecutionListPage{}, err
+		}
+		if sOrd != nil {
+			return storage.ExecutionListPage{}, storage.ErrInvalidListCursor
+		}
+		switch sf {
+		case storage.ExecListSortPhase:
+			if pOrd == nil {
+				return storage.ExecutionListPage{}, storage.ErrInvalidListCursor
+			}
+			if asc {
+				q += fmt.Sprintf(` AND (`+phaseOrdExpr+` > $%d OR (`+phaseOrdExpr+` = $%d AND created_at > $%d) OR (`+phaseOrdExpr+` = $%d AND created_at = $%d AND id > $%d::uuid))`, n, n, n+1, n, n+1, n+2)
+				args = append(args, *pOrd, ts, id)
+			} else {
+				q += fmt.Sprintf(` AND (`+phaseOrdExpr+` < $%d OR (`+phaseOrdExpr+` = $%d AND created_at < $%d) OR (`+phaseOrdExpr+` = $%d AND created_at = $%d AND id < $%d::uuid))`, n, n, n+1, n, n+1, n+2)
+				args = append(args, *pOrd, ts, id)
+			}
+			n += 3
+		case storage.ExecListSortCreatedAt:
+			if pOrd != nil {
+				return storage.ExecutionListPage{}, storage.ErrInvalidListCursor
+			}
+			if asc {
+				q += fmt.Sprintf(" AND (created_at > $%d OR (created_at = $%d AND id > $%d::uuid))", n, n, n+1)
+				args = append(args, ts, id)
+			} else {
+				q += fmt.Sprintf(" AND (created_at < $%d OR (created_at = $%d AND id < $%d::uuid))", n, n, n+1)
+				args = append(args, ts, id)
+			}
+			n += 2
+		default:
+			return storage.ExecutionListPage{}, storage.ErrInvalidListCursor
+		}
+	}
+
+	switch sf {
+	case storage.ExecListSortPhase:
+		if asc {
+			q += " ORDER BY " + phaseOrdExpr + " ASC, created_at ASC, id ASC"
+		} else {
+			q += " ORDER BY " + phaseOrdExpr + " DESC, created_at DESC, id DESC"
+		}
+	case storage.ExecListSortCreatedAt:
+		if asc {
+			q += " ORDER BY created_at ASC, id ASC"
+		} else {
+			q += " ORDER BY created_at DESC, id DESC"
+		}
+	default:
+		return storage.ExecutionListPage{}, storage.ErrInvalidListCursor
+	}
+
+	q += fmt.Sprintf(" LIMIT $%d", n)
+	args = append(args, opts.Limit+1)
+
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return storage.ExecutionListPage{}, fmt.Errorf("list executions page: %w", err)
+	}
+	defer rows.Close()
+	var list []engine.ExecutionRecord
+	for rows.Next() {
+		rec, err := scanExecution(rows)
+		if err != nil {
+			return storage.ExecutionListPage{}, err
+		}
+		list = append(list, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return storage.ExecutionListPage{}, err
+	}
+	hasMore := len(list) > opts.Limit
+	if hasMore {
+		list = list[:opts.Limit]
+	}
+	out := storage.ExecutionListPage{Records: list, HasMore: hasMore}
+	if hasMore && len(list) > 0 {
+		cur, err := storage.EncodeExecutionPageCursor(list[len(list)-1], sf, o)
+		if err != nil {
+			return storage.ExecutionListPage{}, err
+		}
+		out.NextCursor = cur
+	}
+	return out, nil
 }
 
 // GetExecution returns one execution row scoped to a scan.

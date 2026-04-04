@@ -231,3 +231,24 @@ type EndpointPlanSummary struct {
 	Method       string            `json:"method"`
 	Decisions    []v1plan.Decision `json:"decisions"`
 }
+
+// ListPageMeta is cursor pagination metadata for list endpoints (see docs/api.md).
+type ListPageMeta struct {
+	Limit      int    `json:"limit"`
+	Sort       string `json:"sort"`
+	Order      string `json:"order"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	HasMore    bool   `json:"has_more"`
+}
+
+// ExecutionListResponse is the wire envelope for GET /v1/scans/{scanID}/executions.
+type ExecutionListResponse struct {
+	Items []ExecutionRead `json:"items"`
+	Meta  ListPageMeta    `json:"meta"`
+}
+
+// FindingListResponse is the wire envelope for GET /v1/scans/{scanID}/findings.
+type FindingListResponse struct {
+	Items []FindingRead `json:"items"`
+	Meta  ListPageMeta  `json:"meta"`
+}

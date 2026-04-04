@@ -100,12 +100,15 @@ func TestAPI_listExecutions_empty(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	var list []ExecutionRead
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+	var body ExecutionListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if list == nil || len(list) != 0 {
-		t.Fatalf("got %+v", list)
+	if body.Items == nil || len(body.Items) != 0 || body.Meta.HasMore || body.Meta.NextCursor != "" {
+		t.Fatalf("got %+v", body)
+	}
+	if body.Meta.Limit != 50 || body.Meta.Sort != "created_at" || body.Meta.Order != "asc" {
+		t.Fatalf("meta %+v", body.Meta)
 	}
 }
 

@@ -266,12 +266,30 @@ func TestContract_executionList_wireKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var list []json.RawMessage
-	if jerr := json.Unmarshal(body, &list); jerr != nil {
+	var env map[string]json.RawMessage
+	if jerr := json.Unmarshal(body, &env); jerr != nil {
 		t.Fatal(jerr)
 	}
-	if len(list) != 1 {
-		t.Fatalf("expected 1 row, got %d", len(list))
+	for _, k := range []string{"items", "meta"} {
+		if _, ok := env[k]; !ok {
+			t.Fatalf("missing %q in execution list", k)
+		}
 	}
-	assertJSONKeys(t, list[0], executionReadRequired)
+	var items []json.RawMessage
+	if err := json.Unmarshal(env["items"], &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(items))
+	}
+	assertJSONKeys(t, items[0], executionReadRequired)
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(env["meta"], &meta); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"limit", "sort", "order", "has_more"} {
+		if _, ok := meta[k]; !ok {
+			t.Fatalf("meta missing %s", k)
+		}
+	}
 }

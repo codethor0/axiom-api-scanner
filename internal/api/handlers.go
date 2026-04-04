@@ -12,7 +12,6 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
-	"github.com/codethor0/axiom-api-scanner/internal/findings"
 	"github.com/codethor0/axiom-api-scanner/internal/mutate"
 	"github.com/codethor0/axiom-api-scanner/internal/orchestrator"
 	v1plan "github.com/codethor0/axiom-api-scanner/internal/plan/v1"
@@ -388,19 +387,34 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 			filter.ResponseStatus = code
 		}
 	}
-	list, err := h.Executions.ListExecutions(r.Context(), id, filter)
+	pageOpts, perr := parseExecutionListPageParams(r)
+	if perr != nil {
+		writeAPIError(w, http.StatusBadRequest, perr.code, perr.message)
+		return
+	}
+	page, err := h.Executions.ListExecutionsPage(r.Context(), id, filter, pageOpts)
 	if err != nil {
+		if errors.Is(err, storage.ErrInvalidListCursor) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or does not match sort and order")
+			return
+		}
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions")
 		return
 	}
-	if list == nil {
-		list = []engine.ExecutionRecord{}
+	items := make([]ExecutionRead, len(page.Records))
+	for i := range page.Records {
+		items[i] = NewExecutionRead(page.Records[i])
 	}
-	out := make([]ExecutionRead, len(list))
-	for i := range list {
-		out[i] = NewExecutionRead(list[i])
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, ExecutionListResponse{
+		Items: items,
+		Meta: ListPageMeta{
+			Limit:      pageOpts.Limit,
+			Sort:       pageOpts.SortField,
+			Order:      pageOpts.SortOrder,
+			NextCursor: page.NextCursor,
+			HasMore:    page.HasMore,
+		},
+	})
 }
 
 func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
@@ -512,19 +526,34 @@ func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
 		RuleDeclaredConfidence: strings.TrimSpace(r.URL.Query().Get("rule_declared_confidence")),
 		RuleID:                 strings.TrimSpace(r.URL.Query().Get("rule_id")),
 	}
-	list, err := h.Findings.ListByScanID(r.Context(), id, filter)
+	pageOpts, perr := parseFindingListPageParams(r)
+	if perr != nil {
+		writeAPIError(w, http.StatusBadRequest, perr.code, perr.message)
+		return
+	}
+	page, err := h.Findings.ListFindingsPage(r.Context(), id, filter, pageOpts)
 	if err != nil {
+		if errors.Is(err, storage.ErrInvalidListCursor) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or does not match sort and order")
+			return
+		}
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list findings")
 		return
 	}
-	if list == nil {
-		list = []findings.Finding{}
+	out := make([]FindingRead, len(page.Records))
+	for i := range page.Records {
+		out[i] = NewFindingRead(page.Records[i])
 	}
-	out := make([]FindingRead, len(list))
-	for i := range list {
-		out[i] = NewFindingRead(list[i])
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, FindingListResponse{
+		Items: out,
+		Meta: ListPageMeta{
+			Limit:      pageOpts.Limit,
+			Sort:       pageOpts.SortField,
+			Order:      pageOpts.SortOrder,
+			NextCursor: page.NextCursor,
+			HasMore:    page.HasMore,
+		},
+	})
 }
 
 func (h *Handler) getFinding(w http.ResponseWriter, r *http.Request) {

@@ -45,7 +45,7 @@ func (s *Store) ListByScanID(ctx context.Context, scanID string, filter storage.
 		q += fmt.Sprintf(" AND rule_id = $%d", n)
 		args = append(args, t)
 	}
-	q += " ORDER BY created_at ASC"
+	q += " ORDER BY created_at ASC, id ASC"
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
@@ -63,6 +63,133 @@ func (s *Store) ListByScanID(ctx context.Context, scanID string, filter storage.
 		return nil, err
 	}
 	return list, nil
+}
+
+const sevOrdExpr = `(CASE severity WHEN 'info' THEN 0 WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 WHEN 'critical' THEN 4 ELSE 99 END)`
+
+// ListFindingsPage returns one page of findings using keyset pagination.
+func (s *Store) ListFindingsPage(ctx context.Context, scanID string, filter storage.FindingListFilter, opts storage.FindingListPageOptions) (storage.FindingListPage, error) {
+	if opts.Limit <= 0 {
+		return storage.FindingListPage{}, fmt.Errorf("list findings page: invalid limit")
+	}
+	sf := strings.TrimSpace(opts.SortField)
+	o := strings.TrimSpace(opts.SortOrder)
+	if o == "" {
+		o = storage.ListSortAsc
+	}
+	asc := strings.EqualFold(o, storage.ListSortAsc)
+
+	q := `SELECT ` + findingsRowSelect + ` FROM findings WHERE scan_id = $1`
+	args := []any{scanID}
+	n := 2
+	if t := strings.TrimSpace(filter.AssessmentTier); t != "" {
+		q += fmt.Sprintf(" AND assessment_tier = $%d", n)
+		args = append(args, t)
+		n++
+	}
+	if t := strings.TrimSpace(filter.Severity); t != "" {
+		q += fmt.Sprintf(" AND severity = $%d", n)
+		args = append(args, t)
+		n++
+	}
+	if t := strings.TrimSpace(filter.RuleDeclaredConfidence); t != "" {
+		q += fmt.Sprintf(" AND rule_declared_confidence = $%d", n)
+		args = append(args, strings.ToLower(t))
+		n++
+	}
+	if t := strings.TrimSpace(filter.RuleID); t != "" {
+		q += fmt.Sprintf(" AND rule_id = $%d", n)
+		args = append(args, t)
+		n++
+	}
+
+	if strings.TrimSpace(opts.Cursor) != "" {
+		ts, id, pOrd, sevOrd, err := storage.DecodeListCursor(opts.Cursor, sf, o)
+		if err != nil {
+			return storage.FindingListPage{}, err
+		}
+		if pOrd != nil {
+			return storage.FindingListPage{}, storage.ErrInvalidListCursor
+		}
+		switch sf {
+		case storage.FindingListSortSeverity:
+			if sevOrd == nil {
+				return storage.FindingListPage{}, storage.ErrInvalidListCursor
+			}
+			if asc {
+				q += fmt.Sprintf(` AND (`+sevOrdExpr+` > $%d OR (`+sevOrdExpr+` = $%d AND created_at > $%d) OR (`+sevOrdExpr+` = $%d AND created_at = $%d AND id > $%d::uuid))`, n, n, n+1, n, n+1, n+2)
+				args = append(args, *sevOrd, ts, id)
+			} else {
+				q += fmt.Sprintf(` AND (`+sevOrdExpr+` < $%d OR (`+sevOrdExpr+` = $%d AND created_at < $%d) OR (`+sevOrdExpr+` = $%d AND created_at = $%d AND id < $%d::uuid))`, n, n, n+1, n, n+1, n+2)
+				args = append(args, *sevOrd, ts, id)
+			}
+			n += 3
+		case storage.FindingListSortCreatedAt:
+			if sevOrd != nil {
+				return storage.FindingListPage{}, storage.ErrInvalidListCursor
+			}
+			if asc {
+				q += fmt.Sprintf(" AND (created_at > $%d OR (created_at = $%d AND id > $%d::uuid))", n, n, n+1)
+				args = append(args, ts, id)
+			} else {
+				q += fmt.Sprintf(" AND (created_at < $%d OR (created_at = $%d AND id < $%d::uuid))", n, n, n+1)
+				args = append(args, ts, id)
+			}
+			n += 2
+		default:
+			return storage.FindingListPage{}, storage.ErrInvalidListCursor
+		}
+	}
+
+	switch sf {
+	case storage.FindingListSortSeverity:
+		if asc {
+			q += " ORDER BY " + sevOrdExpr + " ASC, created_at ASC, id ASC"
+		} else {
+			q += " ORDER BY " + sevOrdExpr + " DESC, created_at DESC, id DESC"
+		}
+	case storage.FindingListSortCreatedAt:
+		if asc {
+			q += " ORDER BY created_at ASC, id ASC"
+		} else {
+			q += " ORDER BY created_at DESC, id DESC"
+		}
+	default:
+		return storage.FindingListPage{}, storage.ErrInvalidListCursor
+	}
+
+	q += fmt.Sprintf(" LIMIT $%d", n)
+	args = append(args, opts.Limit+1)
+
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return storage.FindingListPage{}, fmt.Errorf("list findings page: %w", err)
+	}
+	defer rows.Close()
+	var list []findings.Finding
+	for rows.Next() {
+		f, err := scanFindingRow(rows)
+		if err != nil {
+			return storage.FindingListPage{}, err
+		}
+		list = append(list, f)
+	}
+	if err := rows.Err(); err != nil {
+		return storage.FindingListPage{}, err
+	}
+	hasMore := len(list) > opts.Limit
+	if hasMore {
+		list = list[:opts.Limit]
+	}
+	out := storage.FindingListPage{Records: list, HasMore: hasMore}
+	if hasMore && len(list) > 0 {
+		cur, err := storage.EncodeFindingPageCursor(list[len(list)-1], sf, o)
+		if err != nil {
+			return storage.FindingListPage{}, err
+		}
+		out.NextCursor = cur
+	}
+	return out, nil
 }
 
 func scanFindingRow(row pgx.Row) (findings.Finding, error) {

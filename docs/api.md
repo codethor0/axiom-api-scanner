@@ -166,7 +166,9 @@ If baseline is missing or not `succeeded`, `result.status` is `failed` with `bas
 
 ### GET /v1/scans/{scanID}/executions
 
-Lists stored HTTP exchanges for the scan, oldest first. Response body is a JSON array of **execution read** objects. **Stable fields** (all preserved for compatibility):
+Lists stored HTTP exchanges for the scan. **Response shape (breaking vs historical raw-array clients):** JSON object with **`items`** (array of **execution read** objects) and **`meta`** (pagination).
+
+**Execution read** fields:
 
 | Field | Meaning |
 | --- | --- |
@@ -179,34 +181,37 @@ Lists stored HTTP exchanges for the scan, oldest first. Response body is a JSON 
 | `request_summary` | Concise view: `method`, `url_short` (length-capped from stored URL), `header_count`, `body_byte_length` (same redacted body as `request.body`). |
 | `response_summary` | Concise view: `status_code`, `content_type`, `header_count`, `body_byte_length` (same body as `response.body`). |
 
-Summaries exist to compare baseline vs mutated rows without re-deriving lengths; they introduce no new secrets beyond the stored snapshots.
+**Pagination (keyset cursor):** `meta.limit` echoes the applied page size (default **50**, maximum **200**). `meta.has_more` is true when more rows exist. `meta.next_cursor` is an opaque string: pass it as **`cursor`** on the next request (with the **same** `sort`, `order`, and narrow filters) to continue. Ordering is deterministic: primary sort key, then `created_at`, then row `id`. Cursors are validated against `sort` and `order`; a mismatched cursor returns `400` `invalid_cursor`.
 
-Optional query parameters:
+**Supported `sort` (executions):** `created_at` (default), `phase` (baseline before mutated for `asc`, reversed for `desc`). Other values return `400` `invalid_sort`.
 
-- `phase`: `baseline` or `mutated`
-- `execution_kind`: alias for `phase` when `phase` is omitted; if **both** are set they must match or the API returns `400` `invalid_filter`
-- `scan_endpoint_id`: UUID of an imported endpoint
-- `rule_id`: exact `mutation_rule_id` filter (mutated rows only store this when tied to a rule candidate)
-- `response_status`: exact HTTP status code integer (e.g. `200`)
+**Supported `order`:** `asc` (default), `desc`. Invalid values return `400` `invalid_order`.
+
+**Not supported:** `offset` (returns `400` `unsupported_query_parameter`); use `cursor` only.
+
+Filters (unchanged, combined with AND): `phase`, `execution_kind` (alias; must match `phase` if both set, else `400` `invalid_filter`), `scan_endpoint_id`, `rule_id`, `response_status`.
 
 ### GET /v1/scans/{scanID}/executions/{executionID}
 
-Returns one execution read object (same shape as list elements) when it belongs to the scan. `404` when missing or mismatched.
+Returns one execution read object (same shape as **`items[]`** elements) when it belongs to the scan. `404` when missing or mismatched.
 
 ### GET /v1/scans/{scanID}/findings
 
-Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each element is a **finding read**: all stored columns (`id`, `scan_id`, `rule_id`, `category`, `severity`, `rule_declared_confidence`, `assessment_tier`, `summary`, `evidence_summary`, `evidence_uri`, `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, `created_at`) plus optional **`evidence_inspection`** when there is something to show:
+Lists findings for the scan. **Response shape:** object with **`items`** (**finding read** array) and **`meta`** (same pagination fields as executions).
 
-- **`evidence_inspection`**: `baseline_execution_id`, `mutated_execution_id` (copied from columns, with fallback from parsed `evidence_summary` when missing), **`matcher_outcomes`** as stable `{index, kind, passed}` rows (no per-matcher prose), and **`diff_point_count`** from stored diff points. Omitted when ids, outcomes, and diff count are all empty. Write paths and stored blobs are unchanged; this block is read-only ergonomics.
+Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each **finding read** includes all stored columns (`id`, `scan_id`, `rule_id`, `category`, `severity`, `rule_declared_confidence`, `assessment_tier`, `summary`, `evidence_summary`, `evidence_uri`, `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, `created_at`) plus optional **`evidence_inspection`** when there is something to show (see `GET /v1/findings/{findingID}`).
+
+**Pagination:** Same cursor model as executions (`limit` default 50, max 200; `cursor` + `meta.next_cursor`). Deterministic tie-break: after primary sort, `created_at`, then `id`.
+
+**Supported `sort` (findings):** `created_at` (default), `severity` (order: info, low, medium, high, critical for `asc`).
+
+**Supported `order`:** `asc` (default), `desc`.
+
+**Not supported:** `offset` (`400` `unsupported_query_parameter`). Unsupported `sort` for this resource (e.g. `phase`) returns `400` `invalid_sort`.
 
 **Non-overlapping semantics:** `severity` is impact; `assessment_tier` is post-run confidence in the signal; `rule_declared_confidence` is YAML authoring quality.
 
-Optional query parameters (all exact match, ANDed):
-
-- `assessment_tier`
-- `severity`
-- `rule_declared_confidence`
-- `rule_id` (exact `findings.rule_id`)
+Optional **filter** query parameters (all exact match, ANDed with pagination): `assessment_tier`, `severity`, `rule_declared_confidence`, `rule_id`.
 
 ## Findings
 

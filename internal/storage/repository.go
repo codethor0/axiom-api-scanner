@@ -101,6 +101,8 @@ type ExecutionRepository interface {
 	GetLatestExecution(ctx context.Context, scanID, scanEndpointID string, phase engine.ExecutionPhase) (engine.ExecutionRecord, error)
 	GetMutationByCandidate(ctx context.Context, scanID, scanEndpointID, ruleID, candidateKey string) (engine.ExecutionRecord, error)
 	ListExecutions(ctx context.Context, scanID string, filter ExecutionListFilter) ([]engine.ExecutionRecord, error)
+	// ListExecutionsPage returns a keyset page (opaque cursor); sort field must be ExecListSortCreatedAt or ExecListSortPhase.
+	ListExecutionsPage(ctx context.Context, scanID string, filter ExecutionListFilter, opts ExecutionListPageOptions) (ExecutionListPage, error)
 	GetExecution(ctx context.Context, scanID, executionID string) (engine.ExecutionRecord, error)
 }
 
@@ -139,6 +141,8 @@ type CreateFindingInput struct {
 // FindingRepository lists and fetches finding rows linked to scans.
 type FindingRepository interface {
 	ListByScanID(ctx context.Context, scanID string, filter FindingListFilter) ([]findings.Finding, error)
+	// ListFindingsPage returns a keyset page; sort field must be FindingListSortCreatedAt or FindingListSortSeverity.
+	ListFindingsPage(ctx context.Context, scanID string, filter FindingListFilter, opts FindingListPageOptions) (FindingListPage, error)
 	GetByID(ctx context.Context, id string) (findings.Finding, error)
 	GetByEvidenceTuple(ctx context.Context, scanID, ruleID, scanEndpointID, baselineExecutionID, mutatedExecutionID string) (findings.Finding, error)
 	CreateFinding(ctx context.Context, in CreateFindingInput) (findings.Finding, error)

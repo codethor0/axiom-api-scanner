@@ -46,12 +46,12 @@ func TestListExecutions_executionKindAliasAndConflict(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d %s", resp.StatusCode, body)
 	}
-	var list []ExecutionRead
-	if uerr := json.Unmarshal(body, &list); uerr != nil {
+	var env ExecutionListResponse
+	if uerr := json.Unmarshal(body, &env); uerr != nil {
 		t.Fatal(uerr)
 	}
-	if len(list) != 1 || list[0].ID != mid || list[0].CandidateKey != "ck" {
-		t.Fatalf("mutated filter %+v", list)
+	if len(env.Items) != 1 || env.Items[0].ID != mid || env.Items[0].CandidateKey != "ck" {
+		t.Fatalf("mutated filter %+v", env.Items)
 	}
 
 	resp2, err := http.Get(base + "?phase=baseline&execution_kind=mutated")
@@ -92,11 +92,11 @@ func TestListFindings_ruleIDFilter(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d %s", resp.StatusCode, body)
 	}
-	var list []FindingRead
-	if uerr := json.Unmarshal(body, &list); uerr != nil {
+	var env FindingListResponse
+	if uerr := json.Unmarshal(body, &env); uerr != nil {
 		t.Fatal(uerr)
 	}
-	if len(list) != 1 || list[0].RuleID != "rule.alpha" {
-		t.Fatalf("%+v", list)
+	if len(env.Items) != 1 || env.Items[0].RuleID != "rule.alpha" {
+		t.Fatalf("%+v", env.Items)
 	}
 }

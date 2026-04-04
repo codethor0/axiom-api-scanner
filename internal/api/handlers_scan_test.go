@@ -214,9 +214,83 @@ func (m *memRepositories) ListExecutions(_ context.Context, scanID string, filte
 		list = append(list, rec)
 	}
 	sort.Slice(list, func(i, j int) bool {
+		if list[i].CreatedAt.Equal(list[j].CreatedAt) {
+			return list[i].ID < list[j].ID
+		}
 		return list[i].CreatedAt.Before(list[j].CreatedAt)
 	})
 	return list, nil
+}
+
+func (m *memRepositories) ListExecutionsPage(_ context.Context, scanID string, filter storage.ExecutionListFilter, opts storage.ExecutionListPageOptions) (storage.ExecutionListPage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var list []engine.ExecutionRecord
+	for _, rec := range m.execRecords {
+		if rec.ScanID != scanID {
+			continue
+		}
+		if filter.Phase != "" && string(rec.Phase) != filter.Phase {
+			continue
+		}
+		if filter.ScanEndpointID != "" && rec.ScanEndpointID != filter.ScanEndpointID {
+			continue
+		}
+		if filter.RuleID != "" && rec.RuleID != filter.RuleID {
+			continue
+		}
+		if filter.ResponseStatus > 0 && rec.ResponseStatus != filter.ResponseStatus {
+			continue
+		}
+		list = append(list, rec)
+	}
+	o := strings.TrimSpace(opts.SortOrder)
+	if o == "" {
+		o = storage.ListSortAsc
+	}
+	asc := strings.EqualFold(o, storage.ListSortAsc)
+	sort.SliceStable(list, func(i, j int) bool {
+		return storage.ExecutionLess(list[i], list[j], opts.SortField, asc)
+	})
+	start := 0
+	if strings.TrimSpace(opts.Cursor) != "" {
+		ts, id, pOrd, sOrd, err := storage.DecodeListCursor(opts.Cursor, opts.SortField, o)
+		if err != nil {
+			return storage.ExecutionListPage{}, err
+		}
+		if sOrd != nil {
+			return storage.ExecutionListPage{}, storage.ErrInvalidListCursor
+		}
+		found := false
+		for i := range list {
+			if storage.ExecutionKeysetAfter(list[i], ts, id, pOrd, opts.SortField, asc) {
+				start = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			start = len(list)
+		}
+	}
+	end := start + opts.Limit + 1
+	if end > len(list) {
+		end = len(list)
+	}
+	page := list[start:end]
+	hasMore := len(page) > opts.Limit
+	if hasMore {
+		page = page[:opts.Limit]
+	}
+	out := storage.ExecutionListPage{Records: page, HasMore: hasMore}
+	if hasMore && len(page) > 0 {
+		cur, err := storage.EncodeExecutionPageCursor(page[len(page)-1], opts.SortField, o)
+		if err != nil {
+			return storage.ExecutionListPage{}, err
+		}
+		out.NextCursor = cur
+	}
+	return out, nil
 }
 
 func (m *memRepositories) GetExecution(_ context.Context, scanID, executionID string) (engine.ExecutionRecord, error) {
@@ -413,6 +487,74 @@ func (m *memRepositories) ListByScanID(_ context.Context, scanID string, filter 
 	return out, nil
 }
 
+func (m *memRepositories) ListFindingsPage(_ context.Context, scanID string, filter storage.FindingListFilter, opts storage.FindingListPageOptions) (storage.FindingListPage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var list []findings.Finding
+	for _, f := range m.byScan[scanID] {
+		if filter.AssessmentTier != "" && f.AssessmentTier != filter.AssessmentTier {
+			continue
+		}
+		if filter.Severity != "" && string(f.Severity) != filter.Severity {
+			continue
+		}
+		if filter.RuleDeclaredConfidence != "" && f.RuleDeclaredConfidence != filter.RuleDeclaredConfidence {
+			continue
+		}
+		if filter.RuleID != "" && f.RuleID != filter.RuleID {
+			continue
+		}
+		list = append(list, f)
+	}
+	o := strings.TrimSpace(opts.SortOrder)
+	if o == "" {
+		o = storage.ListSortAsc
+	}
+	asc := strings.EqualFold(o, storage.ListSortAsc)
+	sort.SliceStable(list, func(i, j int) bool {
+		return storage.FindingLess(list[i], list[j], opts.SortField, asc)
+	})
+	start := 0
+	if strings.TrimSpace(opts.Cursor) != "" {
+		ts, id, pOrd, sevOrd, err := storage.DecodeListCursor(opts.Cursor, opts.SortField, o)
+		if err != nil {
+			return storage.FindingListPage{}, err
+		}
+		if pOrd != nil {
+			return storage.FindingListPage{}, storage.ErrInvalidListCursor
+		}
+		found := false
+		for i := range list {
+			if storage.FindingKeysetAfter(list[i], ts, id, sevOrd, opts.SortField, asc) {
+				start = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			start = len(list)
+		}
+	}
+	end := start + opts.Limit + 1
+	if end > len(list) {
+		end = len(list)
+	}
+	page := list[start:end]
+	hasMore := len(page) > opts.Limit
+	if hasMore {
+		page = page[:opts.Limit]
+	}
+	out := storage.FindingListPage{Records: page, HasMore: hasMore}
+	if hasMore && len(page) > 0 {
+		cur, err := storage.EncodeFindingPageCursor(page[len(page)-1], opts.SortField, o)
+		if err != nil {
+			return storage.FindingListPage{}, err
+		}
+		out.NextCursor = cur
+	}
+	return out, nil
+}
+
 func (m *memRepositories) GetByID(_ context.Context, id string) (findings.Finding, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -465,12 +607,12 @@ func TestListExecutions_returnsExecutionReadEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	var list []ExecutionRead
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+	var env ExecutionListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		t.Fatal(err)
 	}
-	if list == nil {
-		t.Fatal("want non-nil slice")
+	if env.Items == nil {
+		t.Fatal("want non-nil items slice")
 	}
 }
 
