@@ -91,6 +91,24 @@ type ScanRunCoverage struct {
 	Hints                      []string `json:"hints,omitempty"`
 }
 
+// ScanRunProtectedRouteCoverage classifies imported operations and persisted HTTP by whether the OpenAPI row declares security schemes.
+// HTTP counts come only from execution_records rows with a resolvable scan_endpoint_id; the scanner does not infer auth success beyond recorded status codes.
+type ScanRunProtectedRouteCoverage struct {
+	ExecutionsRepositoryConfigured bool `json:"executions_repository_configured"`
+	// EndpointsWithoutSecurityDeclaration counts imported operations with no securitySchemeHints on the scan_endpoints row.
+	EndpointsWithoutSecurityDeclaration int `json:"endpoints_without_security_declaration"`
+	EndpointsDeclaringSecurity          int `json:"endpoints_declaring_security"`
+	// DeclaredSecurityInBaselineScopeEndpoints is the subset of declared-secure operations that baseline can attempt (GET or JSON POST per baseline runner).
+	DeclaredSecurityInBaselineScopeEndpoints  int `json:"declared_security_in_baseline_scope_endpoints"`
+	BaselineRecordsWithoutSecurityDeclaration int `json:"baseline_http_records_on_endpoints_without_security_declaration"`
+	BaselineRecordsDeclaringSecurity          int `json:"baseline_http_records_on_endpoints_declaring_security"`
+	DeclaredSecureBaselineRecordsHTTP401      int `json:"declared_secure_baseline_records_http_401"`
+	DeclaredSecureBaselineRecordsHTTP403      int `json:"declared_secure_baseline_records_http_403"`
+	DeclaredSecureBaselineRecordsHTTP2xx      int `json:"declared_secure_baseline_records_http_2xx"`
+	MutatedRecordsWithoutSecurityDeclaration  int `json:"mutated_http_records_on_endpoints_without_security_declaration"`
+	MutatedRecordsDeclaringSecurity           int `json:"mutated_http_records_on_endpoints_declaring_security"`
+}
+
 // ScanRunPhaseCounts summarizes one runner line from persisted scan columns (no percentages).
 // Total is the planner/runner total (baseline endpoints or mutation candidates). Skipped is max(0, total-completed)
 // only when that runner reports status succeeded; otherwise skipped is zero (remaining work is not labeled skipped).
@@ -122,6 +140,8 @@ type ScanRunFamilyCoverageEntry struct {
 	RulesInPack        int                    `json:"rules_in_pack"`
 	MutatedExecutions  int                    `json:"mutated_executions"`
 	NotExercisedReason *ScanRunDiagnosticLine `json:"not_exercised_reason,omitempty"`
+	// NotExercisedContributors lists extra grounded factors (auth gap, no planner-eligible endpoints) without duplicating not_exercised_reason.
+	NotExercisedContributors []ScanRunDiagnosticLine `json:"not_exercised_contributors,omitempty"`
 }
 
 // ScanRunRuleFamilyCoverage maps stable V1 mutation families to coverage signals (see docs/api.md).
@@ -141,19 +161,20 @@ type ScanRunGuidance struct {
 
 // ScanRunStatusResponse is the wire contract for GET /v1/scans/{scanID}/run/status and successful POST .../run.
 //
-// Canonical (intended for all new clients), in wire order: scan, run, progress, summary, findings_summary, rule_family_coverage, guidance, coverage, diagnostics.
+// Canonical (intended for all new clients), in wire order: scan, run, progress, summary, findings_summary, rule_family_coverage, guidance, coverage, protected_route_coverage, diagnostics.
 // compatibility is the only legacy mirror; fields there duplicate subset of scan/run for older integrations (see docs/api.md).
 type ScanRunStatusResponse struct {
-	Scan               ScanRunScanSummary        `json:"scan"`
-	Run                ScanRunState              `json:"run"`
-	Progress           ScanRunProgress           `json:"progress"`
-	Summary            ScanRunReadSummary        `json:"summary"`
-	FindingsSummary    ScanFindingsSummary       `json:"findings_summary"`
-	RuleFamilyCoverage ScanRunRuleFamilyCoverage `json:"rule_family_coverage"`
-	Guidance           ScanRunGuidance           `json:"guidance"`
-	Coverage           ScanRunCoverage           `json:"coverage"`
-	Diagnostics        ScanRunDiagnostics        `json:"diagnostics"`
-	Compatibility      ScanRunCompatibility      `json:"compatibility"`
+	Scan                   ScanRunScanSummary            `json:"scan"`
+	Run                    ScanRunState                  `json:"run"`
+	Progress               ScanRunProgress               `json:"progress"`
+	Summary                ScanRunReadSummary            `json:"summary"`
+	FindingsSummary        ScanFindingsSummary           `json:"findings_summary"`
+	RuleFamilyCoverage     ScanRunRuleFamilyCoverage     `json:"rule_family_coverage"`
+	Guidance               ScanRunGuidance               `json:"guidance"`
+	Coverage               ScanRunCoverage               `json:"coverage"`
+	ProtectedRouteCoverage ScanRunProtectedRouteCoverage `json:"protected_route_coverage"`
+	Diagnostics            ScanRunDiagnostics            `json:"diagnostics"`
+	Compatibility          ScanRunCompatibility          `json:"compatibility"`
 }
 
 // ScanRunControlRequest starts, resumes, or cancels a synchronous scan run.

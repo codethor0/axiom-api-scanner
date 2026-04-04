@@ -51,7 +51,8 @@ func TestBuildScanRunRuleFamilyCoverage_exercisedFromMutatedRows(t *testing.T) {
 	mut := []engine.ExecutionRecord{
 		{Phase: engine.PhaseMutated, RuleID: "r1"},
 	}
-	cov := buildScanRunRuleFamilyCoverage(scan, []rules.Rule{rl}, mut)
+	ep := []engine.ScanEndpoint{{ID: "e1", Method: "GET", PathTemplate: "/p/{id}"}}
+	cov := buildScanRunRuleFamilyCoverage(scan, []rules.Rule{rl}, mut, ep, false)
 	if !cov.IDORPathOrQuery.Exercised || cov.IDORPathOrQuery.MutatedExecutions != 1 {
 		t.Fatalf("idor %+v", cov.IDORPathOrQuery)
 	}
@@ -74,7 +75,7 @@ func TestBuildScanRunRuleFamilyCoverage_zeroCandidatesReason(t *testing.T) {
 			{Kind: rules.MutationMergeJSONFields},
 		},
 	}
-	cov := buildScanRunRuleFamilyCoverage(scan, []rules.Rule{rl}, nil)
+	cov := buildScanRunRuleFamilyCoverage(scan, []rules.Rule{rl}, nil, nil, false)
 	if cov.MassAssignment.Exercised {
 		t.Fatal("expected not exercised")
 	}
@@ -91,6 +92,29 @@ func TestFindingsSummaryFromList_mapsTierAndSeverity(t *testing.T) {
 	})
 	if s.Total != 3 || s.ByAssessmentTier["confirmed"] != 2 || s.BySeverity["high"] != 2 {
 		t.Fatalf("%+v", s)
+	}
+}
+
+func TestBuildScanRunRuleFamilyCoverage_notExercisedAuthContributor(t *testing.T) {
+	scan := engine.Scan{MutationRunStatus: "succeeded", MutationCandidatesTotal: 0}
+	rl := rules.Rule{
+		ID:     "r1",
+		Target: rules.RuleTarget{Methods: []string{"GET"}, Where: "path_params.id"},
+		Mutations: rules.Mutations{
+			{Kind: rules.MutationReplacePathParam},
+		},
+	}
+	ep := engine.ScanEndpoint{ID: "e1", Method: "GET", PathTemplate: "/x/{id}", SecuritySchemeHints: []string{"bearer"}}
+	cov := buildScanRunRuleFamilyCoverage(scan, []rules.Rule{rl}, nil, []engine.ScanEndpoint{ep}, false)
+	found := false
+	for _, c := range cov.IDORPathOrQuery.NotExercisedContributors {
+		if c.Code == "declared_secure_openapi_operations_present_auth_headers_absent" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("want auth contributor, got %+v", cov.IDORPathOrQuery.NotExercisedContributors)
 	}
 }
 

@@ -2,13 +2,25 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
+	v1plan "github.com/codethor0/axiom-api-scanner/internal/plan/v1"
 	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
+
+func filterMutatedExecutions(all []engine.ExecutionRecord) []engine.ExecutionRecord {
+	var out []engine.ExecutionRecord
+	for _, ex := range all {
+		if ex.Phase == engine.PhaseMutated {
+			out = append(out, ex)
+		}
+	}
+	return out
+}
 
 func buildScanRunReadSummary(scan engine.Scan, endpointsImported int) ScanRunReadSummary {
 	return ScanRunReadSummary{
@@ -114,7 +126,43 @@ func ruleFamilies(rule rules.Rule) map[familyKey]struct{} {
 	return out
 }
 
-func buildScanRunRuleFamilyCoverage(scan engine.Scan, rulesList []rules.Rule, mutated []engine.ExecutionRecord) ScanRunRuleFamilyCoverage {
+func rulesForFamily(rulesList []rules.Rule, fk familyKey) []rules.Rule {
+	var out []rules.Rule
+	for _, r := range rulesList {
+		if _, ok := ruleFamilies(r)[fk]; ok {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func countEligibleEndpointsForFamily(endpoints []engine.ScanEndpoint, rulesForFam []rules.Rule) int {
+	if len(rulesForFam) == 0 {
+		return 0
+	}
+	n := 0
+	for _, ep := range endpoints {
+		for _, d := range v1plan.Plan(ep, rulesForFam) {
+			if d.Eligible {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+func countEndpointsDeclaringSecurity(endpoints []engine.ScanEndpoint) int {
+	n := 0
+	for _, ep := range endpoints {
+		if endpointDeclaresOpenAPISecurity(ep) {
+			n++
+		}
+	}
+	return n
+}
+
+func buildScanRunRuleFamilyCoverage(scan engine.Scan, rulesList []rules.Rule, mutated []engine.ExecutionRecord, endpoints []engine.ScanEndpoint, authConfigured bool) ScanRunRuleFamilyCoverage {
 	ruleByID := make(map[string]rules.Rule, len(rulesList))
 	for i := range rulesList {
 		rid := strings.TrimSpace(rulesList[i].ID)
@@ -142,16 +190,38 @@ func buildScanRunRuleFamilyCoverage(scan engine.Scan, rulesList []rules.Rule, mu
 			mutCount[fk]++
 		}
 	}
+	secN := countEndpointsDeclaringSecurity(endpoints)
 	out := ScanRunRuleFamilyCoverage{
-		IDORPathOrQuery:   familyEntry(scan, rulesInPack[familyIDOR], mutCount[familyIDOR]),
-		MassAssignment:    familyEntry(scan, rulesInPack[familyMassAssignment], mutCount[familyMassAssignment]),
-		PathNormalization: familyEntry(scan, rulesInPack[familyPathNormalization], mutCount[familyPathNormalization]),
-		RateLimitHeaders:  familyEntry(scan, rulesInPack[familyRateLimitHeaders], mutCount[familyRateLimitHeaders]),
+		IDORPathOrQuery: familyEntry(scan, rulesInPack[familyIDOR], mutCount[familyIDOR],
+			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyIDOR)), secN, authConfigured),
+		MassAssignment: familyEntry(scan, rulesInPack[familyMassAssignment], mutCount[familyMassAssignment],
+			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyMassAssignment)), secN, authConfigured),
+		PathNormalization: familyEntry(scan, rulesInPack[familyPathNormalization], mutCount[familyPathNormalization],
+			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyPathNormalization)), secN, authConfigured),
+		RateLimitHeaders: familyEntry(scan, rulesInPack[familyRateLimitHeaders], mutCount[familyRateLimitHeaders],
+			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyRateLimitHeaders)), secN, authConfigured),
 	}
 	return out
 }
 
-func familyEntry(scan engine.Scan, rulesInPack, mutN int) ScanRunFamilyCoverageEntry {
+func groundedFamilyContributors(primaryCode string, rulesInPack, eligibleEndpoints, secEndpoints int, authConfigured bool) []ScanRunDiagnosticLine {
+	var out []ScanRunDiagnosticLine
+	if rulesInPack > 0 && eligibleEndpoints == 0 && primaryCode != "no_rules_for_family_in_pack" {
+		out = append(out, ScanRunDiagnosticLine{
+			Code:   "no_eligible_imported_endpoints_for_family",
+			Detail: "V1 planner found no eligible imported operation for any loaded rule in this family",
+		})
+	}
+	if !authConfigured && secEndpoints > 0 {
+		out = append(out, ScanRunDiagnosticLine{
+			Code:   "declared_secure_openapi_operations_present_auth_headers_absent",
+			Detail: strconv.Itoa(secEndpoints) + " imported operation(s) declare OpenAPI security schemes; scan has no auth_headers (outbound requests omit configured credentials)",
+		})
+	}
+	return out
+}
+
+func familyEntry(scan engine.Scan, rulesInPack, mutN, eligibleEndpoints, secEndpoints int, authConfigured bool) ScanRunFamilyCoverageEntry {
 	exercised := mutN > 0
 	e := ScanRunFamilyCoverageEntry{
 		Exercised:         exercised,
@@ -162,29 +232,35 @@ func familyEntry(scan engine.Scan, rulesInPack, mutN int) ScanRunFamilyCoverageE
 		return e
 	}
 	var reason ScanRunDiagnosticLine
+	var primaryCode string
 	switch {
 	case rulesInPack == 0:
+		primaryCode = "no_rules_for_family_in_pack"
 		reason = ScanRunDiagnosticLine{
-			Code:   "no_rules_for_family_in_pack",
+			Code:   primaryCode,
 			Detail: "no loaded rules under AXIOM_RULES_DIR include this mutation family",
 		}
 	case strings.TrimSpace(scan.MutationRunStatus) != "succeeded":
+		primaryCode = "mutation_pass_not_succeeded"
 		reason = ScanRunDiagnosticLine{
-			Code:   "mutation_pass_not_succeeded",
+			Code:   primaryCode,
 			Detail: "mutation_run_status is \"" + strings.TrimSpace(scan.MutationRunStatus) + "\" on the scan row",
 		}
 	case scan.MutationCandidatesTotal == 0:
+		primaryCode = "zero_mutation_candidates_total"
 		reason = ScanRunDiagnosticLine{
-			Code:   "zero_mutation_candidates_total",
+			Code:   primaryCode,
 			Detail: "mutation_candidates_total is 0 on the scan row",
 		}
 	default:
+		primaryCode = "no_mutated_executions_for_family"
 		reason = ScanRunDiagnosticLine{
-			Code:   "no_mutated_executions_for_family",
+			Code:   primaryCode,
 			Detail: "no execution_records with phase mutated for rules using this family (see /v1/scans/{scan_id}/executions?phase=mutated)",
 		}
 	}
 	e.NotExercisedReason = &reason
+	e.NotExercisedContributors = groundedFamilyContributors(primaryCode, rulesInPack, eligibleEndpoints, secEndpoints, authConfigured)
 	return e
 }
 

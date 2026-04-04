@@ -79,15 +79,17 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var mutated []engine.ExecutionRecord
+	var allExec []engine.ExecutionRecord
 	if h.Executions != nil {
 		var exErr error
-		mutated, exErr = h.Executions.ListExecutions(r.Context(), id, storage.ExecutionListFilter{Phase: string(engine.PhaseMutated)})
+		allExec, exErr = h.Executions.ListExecutions(r.Context(), id, storage.ExecutionListFilter{})
 		if exErr != nil {
 			writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions")
 			return
 		}
 	}
+	mutated := filterMutatedExecutions(allExec)
+	protectedCov := buildScanRunProtectedRouteCoverage(endpoints, allExec, h.Executions != nil)
 
 	var fam ScanRunRuleFamilyCoverage
 	switch {
@@ -100,11 +102,12 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		if lerr != nil {
 			fam = scanRuleFamilyCoverageRulesLoadFailed(lerr)
 		} else {
-			fam = buildScanRunRuleFamilyCoverage(scan, rulesList, mutated)
+			fam = buildScanRunRuleFamilyCoverage(scan, rulesList, mutated, endpoints, authConfigured)
 		}
 	}
 
 	diagnostics := buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured)
+	appendAuthAndRouteDiagnostics(&diagnostics, scan, authConfigured, protectedCov)
 	diagnostics.ConsistencyDetail = scanRunConsistencyLines(scan, findingsSummary, h.Findings != nil, mutated, fam)
 
 	out := ScanRunStatusResponse{
@@ -123,12 +126,13 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 			MutationExecutionsCompleted: scan.MutationCandidatesDone,
 			FindingsCreated:             scan.FindingsCount,
 		},
-		Summary:            buildScanRunReadSummary(scan, nEp),
-		FindingsSummary:    findingsSummary,
-		RuleFamilyCoverage: fam,
-		Guidance:           buildScanRunGuidance(scan, nEp, secEndpoints, authConfigured),
-		Coverage:           cov,
-		Diagnostics:        diagnostics,
+		Summary:                buildScanRunReadSummary(scan, nEp),
+		FindingsSummary:        findingsSummary,
+		RuleFamilyCoverage:     fam,
+		Guidance:               buildScanRunGuidance(scan, nEp, secEndpoints, authConfigured),
+		Coverage:               cov,
+		ProtectedRouteCoverage: protectedCov,
+		Diagnostics:            diagnostics,
 		Compatibility: ScanRunCompatibility{
 			ScanID:     scan.ID,
 			Phase:      string(scan.RunPhase),
