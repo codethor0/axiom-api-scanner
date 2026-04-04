@@ -142,6 +142,7 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		Coverage:               cov,
 		ProtectedRouteCoverage: protectedCov,
 		Diagnostics:            diagnostics,
+		Drilldown:              scanRunDrilldownHints(scan.ID),
 		Compatibility: ScanRunCompatibility{
 			ScanID:     scan.ID,
 			Phase:      string(scan.RunPhase),

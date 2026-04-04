@@ -60,14 +60,11 @@ func endpointInvestigationReadFromInventory(ent storage.EndpointInventoryEntry) 
 func endpointDetailFromInventory(ent storage.EndpointInventoryEntry) EndpointDetailResponse {
 	r := endpointReadFromInventory(ent, true)
 	id := ent.Endpoint.ID
+	sid := ent.Endpoint.ScanID
 	q := fmt.Sprintf("scan_endpoint_id=%s", id)
 	return EndpointDetailResponse{
 		EndpointRead:  r,
 		Investigation: endpointInvestigationReadFromInventory(ent),
-		Drilldown: EndpointDrilldownHints{
-			ScanEndpointID:      id,
-			ExecutionsListQuery: q,
-			FindingsListQuery:   q,
-		},
+		Drilldown:     endpointDrilldownHints(sid, id, q, q),
 	}
 }

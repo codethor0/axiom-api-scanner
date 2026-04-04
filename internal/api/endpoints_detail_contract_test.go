@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,19 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
+
+func assertEndpointDrilldownMatches(t *testing.T, raw json.RawMessage, scanID, epID string) {
+	t.Helper()
+	q := fmt.Sprintf("scan_endpoint_id=%s", epID)
+	want := endpointDrilldownHints(scanID, epID, q, q)
+	var got EndpointDrilldownHints
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("drilldown got %+v want %+v", got, want)
+	}
+}
 
 var endpointDetailCanonicalKeys = []string{
 	"id", "scan_id", "method", "path_template", "request_body_json",
@@ -108,18 +122,7 @@ func TestGetScanEndpoint_detailWireShape(t *testing.T) {
 	if fd["by_assessment_tier"]["tentative"] != 1 {
 		t.Fatalf("findings investigation %+v", fd)
 	}
-	var dd map[string]json.RawMessage
-	if err := json.Unmarshal(top["drilldown"], &dd); err != nil {
-		t.Fatal(err)
-	}
-	wantScanEp, _ := json.Marshal(epID)
-	wantQ, _ := json.Marshal("scan_endpoint_id=" + epID)
-	if string(dd["scan_endpoint_id"]) != string(wantScanEp) {
-		t.Fatalf("drilldown %+v", dd)
-	}
-	if string(dd["executions_list_query"]) != string(wantQ) || string(dd["findings_list_query"]) != string(wantQ) {
-		t.Fatalf("drilldown queries %+v want %s", dd, string(wantQ))
-	}
+	assertEndpointDrilldownMatches(t, top["drilldown"], scan.ID, epID)
 	if string(top["declares_openapi_security"]) != "true" {
 		t.Fatalf("want declares_openapi_security true: %s", body)
 	}
@@ -167,14 +170,7 @@ func TestGetScanEndpoint_detailNoExecutionsOrFindings(t *testing.T) {
 	if len(inv) != 0 {
 		t.Fatalf("want empty investigation object, got %s", top["investigation"])
 	}
-	var dd map[string]json.RawMessage
-	if err := json.Unmarshal(top["drilldown"], &dd); err != nil {
-		t.Fatal(err)
-	}
-	wantQ, _ := json.Marshal("scan_endpoint_id=" + epID)
-	if string(dd["executions_list_query"]) != string(wantQ) || string(dd["findings_list_query"]) != string(wantQ) {
-		t.Fatalf("drilldown %+v", dd)
-	}
+	assertEndpointDrilldownMatches(t, top["drilldown"], scan.ID, epID)
 	var sum map[string]int
 	if err := json.Unmarshal(top["summary"], &sum); err != nil {
 		t.Fatal(err)

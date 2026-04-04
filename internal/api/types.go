@@ -72,11 +72,27 @@ type EndpointInvestigationRead struct {
 	Findings *EndpointFindingsInvestigationRead `json:"findings,omitempty"`
 }
 
-// EndpointDrilldownHints repeats the persisted scan_endpoint id and query-ready strings for related list reads (no absolute URLs; append to scan-scoped list paths).
+// EndpointDrilldownHints gives path-only API prefixes (leading slash) and query fragments for filtered list reads.
+// Combine executions as executions_list_path + "?" + executions_list_query when filtering by this scan_endpoint_id; same pattern for findings.
+// ScanID repeats EndpointRead.scan_id so the drilldown object is self-contained for copy/paste.
 type EndpointDrilldownHints struct {
-	ScanEndpointID       string `json:"scan_endpoint_id"`
-	ExecutionsListQuery  string `json:"executions_list_query"`
-	FindingsListQuery    string `json:"findings_list_query"`
+	ScanID                 string `json:"scan_id"`
+	ScanEndpointID         string `json:"scan_endpoint_id"`
+	EndpointsInventoryPath string `json:"endpoints_inventory_path"`
+	EndpointDetailPath     string `json:"endpoint_detail_path"`
+	ExecutionsListPath     string `json:"executions_list_path"`
+	FindingsListPath       string `json:"findings_list_path"`
+	ExecutionsListQuery    string `json:"executions_list_query"`
+	FindingsListQuery      string `json:"findings_list_query"`
+}
+
+// ScanRunDrilldownHints gives scan-scoped path-only routes for inventory, executions, findings, and this run status (no host).
+type ScanRunDrilldownHints struct {
+	ScanID                 string `json:"scan_id"`
+	EndpointsInventoryPath string `json:"endpoints_inventory_path"`
+	ExecutionsListPath     string `json:"executions_list_path"`
+	FindingsListPath       string `json:"findings_list_path"`
+	RunStatusPath          string `json:"run_status_path"`
 }
 
 // EndpointDetailResponse is GET /v1/scans/{scanID}/endpoints/{endpointID}: same fields as EndpointRead (summary always includes grounded execution/finding counts), investigation signals, and drilldown hints.
@@ -190,7 +206,10 @@ type ScanRunPhaseCounts struct {
 	Skipped   int    `json:"skipped"`
 }
 
-// ScanRunReadSummary is a compact operator read model: counts from the scan row plus imported endpoint inventory. endpoints_imported equals progress.endpoints_discovered; findings_created equals progress.findings_created (duplicated for operator ergonomics beside baseline/mutation breakdown, not alternate sources).
+// ScanRunReadSummary is a compact operator read model: counts from the scan row plus imported endpoint inventory.
+// endpoints_imported is the same integer as progress.endpoints_discovered (imported scan_endpoints count for this scan).
+// findings_created is the same integer as progress.findings_created (scans.findings_count); not recomputed from listing findings.
+// baseline/mutation totals and completed values are the same scan-row fields surfaced under progress; summary groups them by runner for skimming next to findings_created.
 type ScanRunReadSummary struct {
 	EndpointsImported int                `json:"endpoints_imported"`
 	Baseline          ScanRunPhaseCounts `json:"baseline"`
@@ -232,7 +251,7 @@ type ScanRunGuidance struct {
 
 // ScanRunStatusResponse is the wire contract for GET /v1/scans/{scanID}/run/status and successful POST .../run.
 //
-// Canonical (intended for all new clients), in wire order: scan, run, progress, summary, findings_summary, rule_family_coverage, guidance, coverage, protected_route_coverage, diagnostics.
+// Canonical (intended for all new clients), in wire order: scan, run, progress, summary, findings_summary, rule_family_coverage, guidance, coverage, protected_route_coverage, diagnostics, drilldown.
 // compatibility is the only legacy mirror; fields there duplicate subset of scan/run for older integrations (see docs/api.md).
 type ScanRunStatusResponse struct {
 	Scan                   ScanRunScanSummary            `json:"scan"`
@@ -245,6 +264,7 @@ type ScanRunStatusResponse struct {
 	Coverage               ScanRunCoverage               `json:"coverage"`
 	ProtectedRouteCoverage ScanRunProtectedRouteCoverage `json:"protected_route_coverage"`
 	Diagnostics            ScanRunDiagnostics            `json:"diagnostics"`
+	Drilldown              ScanRunDrilldownHints         `json:"drilldown"`
 	Compatibility          ScanRunCompatibility          `json:"compatibility"`
 }
 

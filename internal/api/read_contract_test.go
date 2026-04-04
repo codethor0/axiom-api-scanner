@@ -46,7 +46,7 @@ var evidenceArtifactRequired = []string{
 var scanRunStatusContractTopLevel = []string{
 	"scan", "run", "progress", "summary", "findings_summary",
 	"rule_family_coverage", "guidance", "coverage", "protected_route_coverage",
-	"diagnostics", "compatibility",
+	"diagnostics", "drilldown", "compatibility",
 }
 
 func assertJSONKeys(t *testing.T, raw json.RawMessage, required []string) {

@@ -17,13 +17,16 @@ import (
 
 var scanRunStatusRequiredTopLevel = []string{
 	"scan", "run", "progress", "summary", "findings_summary",
-	"rule_family_coverage", "guidance", "coverage", "protected_route_coverage", "diagnostics", "compatibility",
+	"rule_family_coverage", "guidance", "coverage", "protected_route_coverage", "diagnostics", "drilldown", "compatibility",
 }
 
 var scanRunStatusNestedKeys = map[string][]string{
 	"guidance": {"next_steps"},
 	"diagnostics": {
 		"blocked_detail", "skipped_detail", "consistency_detail",
+	},
+	"drilldown": {
+		"scan_id", "endpoints_inventory_path", "executions_list_path", "findings_list_path", "run_status_path",
 	},
 	"protected_route_coverage": {
 		"executions_repository_configured",
