@@ -116,6 +116,65 @@ func TestContract_executionRead_wireKeys(t *testing.T) {
 	}
 }
 
+func TestContract_executionRead_summariesAlignWithSnapshots(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eid, ierr := mem.InsertExecutionRecord(ctx, engine.ExecutionRecord{
+		ScanID:              scan.ID,
+		ScanEndpointID:      "ep1",
+		Phase:               engine.PhaseMutated,
+		RuleID:              "rule.z",
+		CandidateKey:        "ck1",
+		RequestMethod:       "POST",
+		RequestURL:          "https://example.com/z?q=1",
+		ResponseStatus:      418,
+		RequestHeaders:      map[string]string{"A": "1"},
+		ResponseHeaders:     map[string]string{"B": "2"},
+		RequestBody:         `{"x":1}`,
+		ResponseBody:        `ok`,
+		ResponseContentType: "text/plain",
+	})
+	if ierr != nil {
+		t.Fatal(ierr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/executions/" + eid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var er ExecutionRead
+	if err := json.Unmarshal(body, &er); err != nil {
+		t.Fatal(err)
+	}
+	if er.Phase != "mutated" || er.ExecutionKind != er.Phase {
+		t.Fatalf("phase/kind %+v", er)
+	}
+	if er.MutationRuleID != "rule.z" || er.CandidateKey != "ck1" {
+		t.Fatalf("rule linkage %+v", er)
+	}
+	if er.Request.Method != er.RequestSummary.Method || er.RequestSummary.BodyByteLength != len(er.Request.Body) ||
+		er.RequestSummary.HeaderCount != len(er.Request.Headers) {
+		t.Fatalf("request vs summary %+v", er)
+	}
+	if er.Response.StatusCode != er.ResponseSummary.StatusCode || er.ResponseSummary.BodyByteLength != len(er.Response.Body) ||
+		er.ResponseSummary.HeaderCount != len(er.Response.Headers) {
+		t.Fatalf("response vs summary %+v", er)
+	}
+}
+
 func TestContract_findingReadAndEvidence_wireKeys(t *testing.T) {
 	mem := newMemRepositories()
 	ctx := context.Background()
@@ -184,6 +243,34 @@ func TestContract_findingReadAndEvidence_wireKeys(t *testing.T) {
 		t.Fatalf("evidence status %d: %s", respe.StatusCode, eb)
 	}
 	assertJSONKeys(t, eb, evidenceArtifactRequired)
+}
+
+func TestContract_findingRead_invalidUUID(t *testing.T) {
+	mem := newMemRepositories()
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/findings/not-a-uuid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestContract_findingEvidence_invalidUUID(t *testing.T) {
+	mem := newMemRepositories()
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/findings/not-a-uuid/evidence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
 }
 
 func TestContract_scanRunStatus_wireKeys_withCoverageAndDiagnostics(t *testing.T) {

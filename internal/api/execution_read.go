@@ -26,13 +26,17 @@ type ExecutionListItem struct {
 	CreatedAt       time.Time                `json:"created_at"`
 }
 
-// ExecutionRead is the operator-oriented JSON shape for a stored HTTP exchange (detail and runner payloads).
+// ExecutionRead is the operator-oriented JSON shape for GET /v1/scans/{scanID}/executions/{executionID} (full redacted exchange).
+//
+// List vs detail: list items expose only request_summary/response_summary; detail adds request/response snapshots (same persisted bytes and header maps subject to redaction).
+// Consistency: execution_kind always equals phase for this API. request_summary.method and body/header counts align with request; response_summary.status_code matches response.status_code.
+// Rule linkage: mutation_rule_id and candidate_key apply only to mutated phase rows; baseline rows omit them.
 type ExecutionRead struct {
 	ID             string `json:"id"`
 	ScanID         string `json:"scan_id"`
 	ScanEndpointID string `json:"scan_endpoint_id,omitempty"`
 	Phase          string `json:"phase"`
-	// ExecutionKind mirrors phase (baseline | mutated) so operators can skim lists without inferring role from other fields.
+	// ExecutionKind mirrors phase (baseline | mutated) for skimming; identical to phase on read (not an alternate classifier).
 	ExecutionKind string `json:"execution_kind"`
 	// MutationRuleID is set for phase "mutated" when the execution was driven by a rule candidate; empty for baseline.
 	MutationRuleID string `json:"mutation_rule_id,omitempty"`
@@ -40,7 +44,7 @@ type ExecutionRead struct {
 	CandidateKey string                `json:"candidate_key,omitempty"`
 	Request      ExecutionRequestSnap  `json:"request"`
 	Response     ExecutionResponseSnap `json:"response"`
-	// RequestSummary and ResponseSummary are length/header counts derived from the same redacted persisted fields as request/response (no extra body material).
+	// RequestSummary and ResponseSummary are derived from the same persisted fields as request/response (counts, shortened URL, status); they do not add new HTTP material.
 	RequestSummary  ExecutionRequestSummary  `json:"request_summary"`
 	ResponseSummary ExecutionResponseSummary `json:"response_summary"`
 	DurationMs      int64                    `json:"duration_ms"`

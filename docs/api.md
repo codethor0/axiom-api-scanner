@@ -254,7 +254,11 @@ Lists stored HTTP exchanges for the scan. **Response shape:** JSON object with *
 
 ### GET /v1/scans/{scanID}/executions/{executionID}
 
-Returns one **execution read** object (full redacted `request` / `response` plus summaries) when it belongs to the scan. `404` when missing or mismatched. This shape is **not** the same as **`items[]`** from the list route (list rows are lighter).
+Returns one **execution read** object (full redacted `request` / `response` plus summaries) when it belongs to the scan.
+
+**Detail semantics:** `execution_kind` always equals `phase` (`baseline` or `mutated`). `request` / `response` are the persisted redacted snapshots. `request_summary` / `response_summary` repeat method, shortened URL, header/body **counts**, and status/content-type derived from those same persisted fields—they do not add new HTTP material (use for quick parity with list rows). For mutated rows, `mutation_rule_id` and `candidate_key` identify the rule work item; baseline rows omit them.
+
+**Errors:** `400` `invalid_scan_id` or `invalid_execution_id` when path segments are not UUIDs; `404` `not_found` when the scan does not exist, or the execution is missing or not scoped to that scan.
 
 ### GET /v1/scans/{scanID}/findings
 
@@ -270,7 +274,7 @@ Rows are produced only after a mutation pass when matchers pass with complete di
 
 **Not supported:** `offset` (`400` `unsupported_query_parameter`). Unsupported `sort` for this resource (e.g. `phase`) returns `400` `invalid_sort`.
 
-**Non-overlapping semantics:** `severity` is impact; `assessment_tier` is post-run confidence in the signal; `rule_declared_confidence` is YAML authoring quality.
+**Non-overlapping semantics:** `severity` is impact; `assessment_tier` is post-run evidence assessment (`confirmed` / `tentative` / `incomplete`); `rule_declared_confidence` is rule-pack signal quality from YAML (not a substitute for `assessment_tier`). **`summary`** is human-oriented text; **`evidence_inspection`** is derived from **`evidence_summary`** only (matcher rows and diff point count). **`baseline_execution_id` / `mutated_execution_id`** on the row are merged from `evidence_summary` when the finding columns are empty so linkage is visible without parsing JSON.
 
 Optional **filter** query parameters (all exact match, ANDed with pagination): `assessment_tier` (**`confirmed`**, **`tentative`**, or **`incomplete`**), **`severity`** (**`info`**, **`low`**, **`medium`**, **`high`**, **`critical`**), **`rule_declared_confidence`** (**`high`**, **`medium`**, **`low`**), **`rule_id`**, **`scan_endpoint_id`** (UUID of an imported endpoint row; limits findings to that operation). Invalid enum-like values or a bad UUID for **`scan_endpoint_id`** return `400` `invalid_filter`.
 
@@ -282,11 +286,17 @@ Optional **filter** query parameters (all exact match, ANDed with pagination): `
 
 Returns one **finding read** object (full columns including **`evidence_summary`** when stored), with **`evidence_inspection`** when applicable. This shape is **richer** than **`items[]`** from **`GET .../scans/{id}/findings`**.
 
+**Field roles:** `severity` (impact bucket), `rule_declared_confidence` (authoring-time quality from the rule), `assessment_tier` (post-run assessment of evidence sufficiency), and `summary` (one-line operator text) are **orthogonal**—do not treat `rule_declared_confidence` as the same signal as `assessment_tier`. **`evidence_summary`** is the raw persisted JSON (includes `schema_version`, matcher/diff payload, and may echo rule metadata for bundle consumers); it may duplicate some finding-row fields inside the blob—**the finding row + API normalization** (trimmed confidence/tier, merged execution IDs) is the primary operator surface. **`evidence_inspection.matcher_outcomes`** is a stable, sorted-by-`index` subset for quick review; it does not replace reading **`evidence_summary`** when debugging evaluator-specific fields.
+
+**Errors:** `400` `invalid_finding_id` when `{findingID}` is not a UUID; `404` when absent.
+
 Rule load failures (`GET /v1/rules`) return `rule_load_failed` with a **numbered, multi-line** validation message when YAML fails validation.
 
 ### GET /v1/findings/{findingID}/evidence
 
-Returns finding-bound evidence from the legacy `evidence_artifacts` table (not the same as `execution_records`).
+Returns finding-bound evidence from the persisted **`evidence_artifacts`** row (baseline/mutated request/response bodies and **`diff_summary`** as stored). **Not** the same resource as `execution_records`; use scan-scoped execution GETs for full exchange snapshots linked by `baseline_execution_id` / `mutated_execution_id`.
+
+**Errors:** `400` `invalid_finding_id` when `{findingID}` is not a UUID; `404` when no artifact exists for that finding.
 
 ## Rules
 

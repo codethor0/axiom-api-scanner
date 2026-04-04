@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
 
@@ -9,13 +10,15 @@ import (
 )
 
 // MatcherOutcomeLine is a concise matcher row for API inspection (stable subset of persisted evidence summaries).
+// Rows are sorted by index ascending on read for deterministic inspection (order in persisted JSON may vary).
 type MatcherOutcomeLine struct {
 	Index  int    `json:"index"`
 	Kind   string `json:"kind"`
 	Passed bool   `json:"passed"`
 }
 
-// FindingEvidenceInspection surfaces evidence_summary content and execution linkage for operators.
+// FindingEvidenceInspection surfaces a stable, scan-safe view of matcher/diff facets inside evidence_summary.
+// Execution linkage also appears on the parent finding/list row; when present in both places, values match after merge from evidence_summary (see mergedFindingExecutionIDs).
 type FindingEvidenceInspection struct {
 	BaselineExecutionID string               `json:"baseline_execution_id,omitempty"`
 	MutatedExecutionID  string               `json:"mutated_execution_id,omitempty"`
@@ -43,6 +46,13 @@ type FindingListItem struct {
 }
 
 // FindingRead is the operator read projection for GET /v1/findings/{findingID} (full columns including raw evidence_summary).
+//
+// Semantic separation (orthogonal fields):
+//   - severity: impact bucket for the finding (rule/finding pipeline).
+//   - rule_declared_confidence: rule-pack quality signal from authoring (high / medium / low); not post-run proof.
+//   - assessment_tier: post-run evidence sufficiency (confirmed / tentative / incomplete) from stored assessment.
+//   - summary: one-line operator text (human-written or generated); not structured evidence.
+//   - evidence_summary: opaque persisted JSON (schema_version + matcher/diff payload); use evidence_inspection for a stable subset without re-parsing.
 type FindingRead struct {
 	ID                     string                     `json:"id"`
 	ScanID                 string                     `json:"scan_id"`
@@ -61,14 +71,34 @@ type FindingRead struct {
 	EvidenceInspection     *FindingEvidenceInspection `json:"evidence_inspection,omitempty"`
 }
 
-// parseFindingEvidenceInspection derives matcher/diff cues and execution IDs from the row and JSON summary.
-func parseFindingEvidenceInspection(f findings.Finding) *FindingEvidenceInspection {
+func mergedFindingExecutionIDs(f findings.Finding) (baselineID, mutatedID string) {
+	base := strings.TrimSpace(f.BaselineExecutionID)
+	mut := strings.TrimSpace(f.MutatedExecutionID)
 	if len(f.EvidenceSummary) == 0 {
-		return linkageInspection(f.BaselineExecutionID, f.MutatedExecutionID, nil, 0)
+		return base, mut
 	}
 	var v1 findings.EvidenceSummaryV1
 	if err := json.Unmarshal(f.EvidenceSummary, &v1); err != nil {
-		return linkageInspection(f.BaselineExecutionID, f.MutatedExecutionID, nil, 0)
+		return base, mut
+	}
+	if base == "" {
+		base = strings.TrimSpace(v1.BaselineExecutionID)
+	}
+	if mut == "" {
+		mut = strings.TrimSpace(v1.MutatedExecutionID)
+	}
+	return base, mut
+}
+
+// parseFindingEvidenceInspection derives matcher/diff cues and execution linkage from the row and JSON summary.
+func parseFindingEvidenceInspection(f findings.Finding) *FindingEvidenceInspection {
+	baseMerged, mutMerged := mergedFindingExecutionIDs(f)
+	if len(f.EvidenceSummary) == 0 {
+		return linkageInspection(baseMerged, mutMerged, nil, 0)
+	}
+	var v1 findings.EvidenceSummaryV1
+	if err := json.Unmarshal(f.EvidenceSummary, &v1); err != nil {
+		return linkageInspection(baseMerged, mutMerged, nil, 0)
 	}
 	mo := make([]MatcherOutcomeLine, 0, len(v1.MatcherOutcomes))
 	for _, row := range v1.MatcherOutcomes {
@@ -78,18 +108,21 @@ func parseFindingEvidenceInspection(f findings.Finding) *FindingEvidenceInspecti
 			Passed: row.Passed,
 		})
 	}
-	baseID := f.BaselineExecutionID
-	if baseID == "" {
-		baseID = v1.BaselineExecutionID
-	}
-	mutID := f.MutatedExecutionID
-	if mutID == "" {
-		mutID = v1.MutatedExecutionID
-	}
-	return linkageInspection(baseID, mutID, mo, len(v1.DiffPoints))
+	sort.Slice(mo, func(i, j int) bool {
+		if mo[i].Index != mo[j].Index {
+			return mo[i].Index < mo[j].Index
+		}
+		if mo[i].Kind != mo[j].Kind {
+			return mo[i].Kind < mo[j].Kind
+		}
+		return !mo[i].Passed && mo[j].Passed
+	})
+	return linkageInspection(baseMerged, mutMerged, mo, len(v1.DiffPoints))
 }
 
 func linkageInspection(baseID, mutID string, outcomes []MatcherOutcomeLine, diffN int) *FindingEvidenceInspection {
+	baseID = strings.TrimSpace(baseID)
+	mutID = strings.TrimSpace(mutID)
 	if baseID == "" && mutID == "" && len(outcomes) == 0 && diffN == 0 {
 		return nil
 	}
@@ -103,17 +136,18 @@ func linkageInspection(baseID, mutID string, outcomes []MatcherOutcomeLine, diff
 
 // NewFindingListItem maps a persisted finding to the list row shape (no evidence_summary JSON).
 func NewFindingListItem(f findings.Finding) FindingListItem {
+	baseID, mutID := mergedFindingExecutionIDs(f)
 	return FindingListItem{
 		ID:                     f.ID,
 		RuleID:                 f.RuleID,
 		Severity:               f.Severity,
-		RuleDeclaredConfidence: f.RuleDeclaredConfidence,
-		AssessmentTier:         f.AssessmentTier,
+		RuleDeclaredConfidence: strings.TrimSpace(f.RuleDeclaredConfidence),
+		AssessmentTier:         strings.TrimSpace(f.AssessmentTier),
 		ScanID:                 f.ScanID,
 		Category:               f.Category,
 		ScanEndpointID:         f.ScanEndpointID,
-		BaselineExecutionID:    f.BaselineExecutionID,
-		MutatedExecutionID:     f.MutatedExecutionID,
+		BaselineExecutionID:    baseID,
+		MutatedExecutionID:     mutID,
 		EvidenceURI:            f.EvidenceURI,
 		Summary:                f.Summary,
 		EvidenceInspection:     parseFindingEvidenceInspection(f),
@@ -123,20 +157,21 @@ func NewFindingListItem(f findings.Finding) FindingListItem {
 
 // NewFindingRead maps a persisted finding into the API read model for GET by id.
 func NewFindingRead(f findings.Finding) FindingRead {
+	baseID, mutID := mergedFindingExecutionIDs(f)
 	return FindingRead{
 		ID:                     f.ID,
 		ScanID:                 f.ScanID,
 		RuleID:                 f.RuleID,
 		Category:               f.Category,
 		Severity:               f.Severity,
-		RuleDeclaredConfidence: f.RuleDeclaredConfidence,
-		AssessmentTier:         f.AssessmentTier,
+		RuleDeclaredConfidence: strings.TrimSpace(f.RuleDeclaredConfidence),
+		AssessmentTier:         strings.TrimSpace(f.AssessmentTier),
 		Summary:                f.Summary,
 		EvidenceSummary:        f.EvidenceSummary,
 		EvidenceURI:            f.EvidenceURI,
 		ScanEndpointID:         f.ScanEndpointID,
-		BaselineExecutionID:    f.BaselineExecutionID,
-		MutatedExecutionID:     f.MutatedExecutionID,
+		BaselineExecutionID:    baseID,
+		MutatedExecutionID:     mutID,
 		CreatedAt:              f.CreatedAt,
 		EvidenceInspection:     parseFindingEvidenceInspection(f),
 	}

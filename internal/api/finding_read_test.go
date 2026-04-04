@@ -1,108 +1,110 @@
 package api
 
 import (
-	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
 )
 
-func TestNewFindingRead_evidenceInspection(t *testing.T) {
-	t.Parallel()
-	raw, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
-		BaselineExecutionID: "b-ex",
-		MutatedExecutionID:  "m-ex",
+func TestMergedFindingExecutionIDs_prefersRowFallsBackToEvidenceSummary(t *testing.T) {
+	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
+		BaselineExecutionID: "from-evidence",
+		MutatedExecutionID:  "mut-evidence",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowFirst := findings.Finding{
+		BaselineExecutionID: "row-b",
+		MutatedExecutionID:  "row-m",
+		EvidenceSummary:     evSum,
+	}
+	b, m := mergedFindingExecutionIDs(rowFirst)
+	if b != "row-b" || m != "row-m" {
+		t.Fatalf("got %q %q", b, m)
+	}
+	rowEmpty := findings.Finding{
+		EvidenceSummary: evSum,
+	}
+	b, m = mergedFindingExecutionIDs(rowEmpty)
+	if b != "from-evidence" || m != "mut-evidence" {
+		t.Fatalf("got %q %q", b, m)
+	}
+}
+
+func TestParseFindingEvidenceInspection_matcherOutcomesSortedByIndex(t *testing.T) {
+	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
 		MatcherOutcomes: []findings.MatcherOutcomeSummary{
-			{Index: 0, Kind: "status_differs_from_baseline", Passed: true, Summary: "ignored"},
-			{Index: 1, Kind: "response_body_substring", Passed: false},
+			{Index: 2, Kind: "later", Passed: true},
+			{Index: 0, Kind: "first", Passed: false},
+			{Index: 1, Kind: "mid", Passed: true},
 		},
-		DiffPoints: []string{"a", "b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := findings.Finding{EvidenceSummary: evSum, BaselineExecutionID: "b1", MutatedExecutionID: "m1"}
+	ins := parseFindingEvidenceInspection(f)
+	if ins == nil || len(ins.MatcherOutcomes) != 3 {
+		t.Fatalf("ins %+v", ins)
+	}
+	want := []MatcherOutcomeLine{
+		{Index: 0, Kind: "first", Passed: false},
+		{Index: 1, Kind: "mid", Passed: true},
+		{Index: 2, Kind: "later", Passed: true},
+	}
+	for i := range want {
+		if ins.MatcherOutcomes[i] != want[i] {
+			t.Fatalf("i=%d got %+v want %+v", i, ins.MatcherOutcomes[i], want[i])
+		}
+	}
+}
+
+func TestNewFindingRead_fillsExecutionIDsFromEvidenceSummary(t *testing.T) {
+	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
+		BaselineExecutionID: "eb",
+		MutatedExecutionID:  "em",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f := findings.Finding{
-		ID:                     "f1",
-		ScanID:                 "s1",
-		RuleID:                 "r1",
+		ID:             "fid",
+		ScanID:         "sid",
+		RuleID:         "r",
+		Category:       "c",
+		Severity:       findings.SeverityLow,
+		Summary:        "sum",
+		EvidenceURI:    "/v1/findings/fid/evidence",
+		EvidenceSummary: evSum,
+	}
+	r := NewFindingRead(f)
+	if r.BaselineExecutionID != "eb" || r.MutatedExecutionID != "em" {
+		t.Fatalf("read %+v", r)
+	}
+}
+
+func TestNewFindingRead_severityAndTierDistinctDocShape(t *testing.T) {
+	f := findings.Finding{
+		ID:                     "fid",
+		ScanID:                 "sid",
+		RuleID:                 "r",
 		Category:               "c",
 		Severity:               findings.SeverityHigh,
-		RuleDeclaredConfidence: "high",
-		AssessmentTier:         "confirmed",
-		Summary:                "sum",
-		EvidenceSummary:        raw,
-		EvidenceURI:            "/v1/findings/f1/evidence",
-		BaselineExecutionID:    "b-ex",
-		MutatedExecutionID:     "m-ex",
-		CreatedAt:              time.Unix(1, 0).UTC(),
+		RuleDeclaredConfidence: " low ",
+		AssessmentTier:         " tentative ",
+		Summary:                "human summary",
+		EvidenceURI:            "/e",
 	}
 	r := NewFindingRead(f)
-	if r.EvidenceInspection == nil {
-		t.Fatal("expected inspection")
+	if r.Severity != findings.SeverityHigh {
+		t.Fatal(r.Severity)
 	}
-	if r.EvidenceInspection.BaselineExecutionID != "b-ex" || r.EvidenceInspection.MutatedExecutionID != "m-ex" {
-		t.Fatalf("ids %+v", r.EvidenceInspection)
+	if r.RuleDeclaredConfidence != "low" || r.AssessmentTier != "tentative" {
+		t.Fatalf("trim %+v", r)
 	}
-	if r.EvidenceInspection.DiffPointCount != 2 || len(r.EvidenceInspection.MatcherOutcomes) != 2 {
-		t.Fatalf("outcomes/diff %+v", r.EvidenceInspection)
-	}
-	if r.EvidenceInspection.MatcherOutcomes[0].Kind != "status_differs_from_baseline" || !r.EvidenceInspection.MatcherOutcomes[0].Passed {
-		t.Fatalf("m0 %+v", r.EvidenceInspection.MatcherOutcomes[0])
-	}
-	if r.EvidenceInspection.MatcherOutcomes[1].Passed {
-		t.Fatal("m1 should be false")
-	}
-
-	li := NewFindingListItem(f)
-	liBytes, merr := json.Marshal(li)
-	if merr != nil {
-		t.Fatal(merr)
-	}
-	var liKeys map[string]json.RawMessage
-	if err := json.Unmarshal(liBytes, &liKeys); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := liKeys["evidence_summary"]; ok {
-		t.Fatalf("list item must not include evidence_summary: %s", liBytes)
-	}
-	if string(liKeys["rule_id"]) != `"r1"` || li.EvidenceInspection == nil {
-		t.Fatalf("%+v", li)
-	}
-}
-
-func TestNewFindingRead_columnIDsWithoutSummaryBody(t *testing.T) {
-	t.Parallel()
-	f := findings.Finding{
-		ID:                  "f1",
-		ScanID:              "s1",
-		RuleID:              "r1",
-		Severity:            findings.SeverityLow,
-		EvidenceURI:         "/e",
-		BaselineExecutionID: "b-only",
-		MutatedExecutionID:  "m-only",
-		CreatedAt:           time.Unix(0, 0).UTC(),
-	}
-	r := NewFindingRead(f)
-	if r.EvidenceInspection == nil || r.EvidenceInspection.BaselineExecutionID != "b-only" {
-		t.Fatalf("%+v", r.EvidenceInspection)
-	}
-}
-
-func TestNewFindingRead_invalidEvidenceSummaryStillLinksColumns(t *testing.T) {
-	t.Parallel()
-	f := findings.Finding{
-		ID:                  "f1",
-		ScanID:              "s1",
-		RuleID:              "r1",
-		Severity:            findings.SeverityLow,
-		EvidenceSummary:     []byte(`not-json`),
-		EvidenceURI:         "/e",
-		BaselineExecutionID: "bx",
-		CreatedAt:           time.Unix(0, 0).UTC(),
-	}
-	r := NewFindingRead(f)
-	if r.EvidenceInspection == nil || r.EvidenceInspection.BaselineExecutionID != "bx" {
-		t.Fatalf("%+v", r.EvidenceInspection)
+	// summary is operator text; not trimmed aggressively here (stored summary)
+	if r.Summary != "human summary" {
+		t.Fatal(r.Summary)
 	}
 }

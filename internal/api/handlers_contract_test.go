@@ -113,6 +113,49 @@ func TestAPI_listExecutions_empty(t *testing.T) {
 	}
 }
 
+func TestAPI_getExecution_invalidPathUUIDs(t *testing.T) {
+	mem := newMemRepositories()
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/not-a-uuid/executions/00000000-0000-0000-0000-000000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("scan id status %d", resp.StatusCode)
+	}
+	cr, err := http.Post(srv.URL+"/v1/scans", "application/json", strings.NewReader(`{"target_label":"t","safety_mode":"safe"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scan engine.Scan
+	_ = json.NewDecoder(cr.Body).Decode(&scan)
+	_ = cr.Body.Close()
+	resp2, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/executions/not-a-uuid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp2.Body.Close()
+	if resp2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("execution id status %d", resp2.StatusCode)
+	}
+}
+
+func TestAPI_getExecution_scanNotFound(t *testing.T) {
+	mem := newMemRepositories()
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/00000000-0000-0000-0000-000000000099/executions/00000000-0000-0000-0000-000000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
 func TestAPI_getExecution_notFound(t *testing.T) {
 	mem := newMemRepositories()
 	srv := httptest.NewServer(testHandler(mem).Routes())
