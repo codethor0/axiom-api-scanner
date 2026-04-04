@@ -1,8 +1,26 @@
 # Axiom API Scanner
 
-Axiom is a safe-by-default, **evidence-first**, **low-blast-radius** API abuse scanner for **OpenAPI-first** workflows and **authorized** testing. It focuses on a **bounded V1** set of families (IDOR path/query swap, mass assignment privilege injection, path normalization bypass, rate limit header rotation)—not generic “scan everything” DAST. Details: [docs/comparison.md](docs/comparison.md).
+[![CI](https://github.com/codethor0/axiom-api-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/codethor0/axiom-api-scanner/actions/workflows/ci.yml)
+[![Container Publish](https://github.com/codethor0/axiom-api-scanner/actions/workflows/container-publish.yml/badge.svg)](https://github.com/codethor0/axiom-api-scanner/actions/workflows/container-publish.yml)
+[![Release](https://img.shields.io/github/v/release/codethor0/axiom-api-scanner?display_name=tag)](https://github.com/codethor0/axiom-api-scanner/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/codethor0/axiom-api-scanner/blob/main/LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/codethor0/axiom-api-scanner)](https://github.com/codethor0/axiom-api-scanner/blob/main/go.mod)
+[![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fcodethor0%2Faxiom--api--scanner-green)](https://github.com/codethor0/axiom-api-scanner/pkgs/container/axiom-api-scanner)
 
-**Release candidate:** **`v0.1.0-rc.1`** is **published** on GitHub ([release](https://github.com/codethor0/axiom-api-scanner/releases/tag/v0.1.0-rc.1), [CHANGELOG](CHANGELOG.md)). Launch copy and FAQs: [docs/announcement.md](docs/announcement.md), [docs/faq.md](docs/faq.md). **License:** [LICENSE](LICENSE) (MIT).
+Axiom is a safe-by-default, evidence-first, low-blast-radius API abuse scanner for OpenAPI-first workflows and authorized testing.
+
+It focuses on a bounded V1 set of families:
+- IDOR path/query swap
+- mass assignment privilege injection
+- path normalization bypass
+- rate limit header rotation
+
+It is not generic "scan everything" DAST. Details: [docs/comparison.md](docs/comparison.md).
+
+**Release candidate:** [`v0.1.0-rc.1`](https://github.com/codethor0/axiom-api-scanner/releases/tag/v0.1.0-rc.1)  
+**Launch notes:** [docs/announcement.md](docs/announcement.md)  
+**FAQ:** [docs/faq.md](docs/faq.md)  
+**License:** [MIT](LICENSE)
 
 ## Proof at a glance (three separate surfaces)
 
