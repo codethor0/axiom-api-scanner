@@ -37,12 +37,20 @@ type ScanRunProgress struct {
 	FindingsCreated             int `json:"findings_created"`
 }
 
+// ScanRunCoverage surfaces operator hints for partial or auth-dependent coverage (no secrets).
+type ScanRunCoverage struct {
+	AuthHeadersConfigured      bool     `json:"auth_headers_configured"`
+	EndpointsDeclaringSecurity int      `json:"endpoints_declaring_security"`
+	Hints                      []string `json:"hints,omitempty"`
+}
+
 // ScanRunStatusResponse describes orchestration phase and progress for one scan.
 type ScanRunStatusResponse struct {
 	ScanID     string          `json:"scan_id"`
 	Phase      string          `json:"phase"`
 	ScanStatus string          `json:"scan_status"`
 	Progress   ScanRunProgress `json:"progress"`
+	Coverage   ScanRunCoverage `json:"coverage"`
 	LastError  string          `json:"last_error,omitempty"`
 }
 

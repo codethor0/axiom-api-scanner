@@ -137,3 +137,59 @@ curl -sf -X POST "$AXIOM_URL/v1/scans/$OScan/run" \
   -d '{"action":"resume"}' | jq -e '.phase == "findings_complete"' >/dev/null
 
 echo "OK: crAPI-backed e2e passed (findings=$N_FIND). Primary scan id: $SCAN_ID"
+
+if [[ "${RUN_AUTHENTICATED_LEG:-0}" != "1" ]]; then
+  exit 0
+fi
+
+echo "==> authenticated leg: signup + login (crAPI identity API only, local target)"
+EMAIL="axiom-e2e-$(date +%s)@example.com"
+SIGNUP_PAYLOAD="$(jq -n --arg e "$EMAIL" '{email:$e,name:"Axiom E2E",number:"5550001999",password:"Test!123ab"}')"
+curl -sf -X POST "$CRAPI_BASE_URL/identity/api/auth/signup" \
+  -H 'Content-Type: application/json' \
+  -d "$SIGNUP_PAYLOAD" >/dev/null
+
+LOGIN_PAYLOAD="$(jq -n --arg e "$EMAIL" '{email:$e,password:"Test!123ab"}')"
+TOK_JSON="$(curl -sf -X POST "$CRAPI_BASE_URL/identity/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "$LOGIN_PAYLOAD")"
+TOKEN="$(echo "$TOK_JSON" | jq -er .token)"
+
+SCAN_AUTH="$(jq -n \
+  --arg bu "$CRAPI_BASE_URL" \
+  --arg tok "$TOKEN" \
+  '{target_label:"e2e-crapi-auth",safety_mode:"safe",allow_full_execution:false,base_url:$bu,auth_headers:{Authorization:("Bearer " + $tok)}}' |
+  curl -sf -X POST "$AXIOM_URL/v1/scans" -H 'Content-Type: application/json' -d @- | jq -er .id)"
+
+curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_AUTH/specs/openapi" \
+  -H 'Content-Type: application/json' \
+  --data-binary @"$SPEC_FILE" | jq -e '.count >= 1' >/dev/null
+
+echo "==> run/status coverage hints (auth configured)"
+H="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_AUTH/run/status" | jq -r '.coverage.hints | join(" | ")')"
+echo "    hints: $H"
+if ! echo "$H" | grep -q "auth_headers are present"; then
+  echo "expected coverage hint about auth_headers" >&2
+  exit 1
+fi
+
+echo "==> authenticated baseline"
+curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_AUTH/executions/baseline" | jq -e '.result.status == "succeeded"' >/dev/null
+
+echo "==> authenticated mutations"
+curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_AUTH/executions/mutations" | jq -e '.result.status == "succeeded"' >/dev/null
+
+# Protected community create-post: baseline JSON POST with {} should reach the API with Bearer token (response may be 200 or 4xx depending on validation; not 401 if auth is accepted).
+OK_POST="$(
+  curl -sf "$AXIOM_URL/v1/scans/$SCAN_AUTH/executions?phase=baseline" |
+  jq '[.[] | select(.phase=="baseline" and .request.method=="POST" and (.request.url | test("/community/api/v2/community/posts$")) and .response.status_code != 401)] | length'
+)"
+if [[ "${OK_POST:-0}" -lt 1 ]]; then
+  echo "expected at least one baseline POST to /community/api/v2/community/posts without 401 when using JWT" >&2
+  exit 1
+fi
+
+N_AUTH_FIND="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_AUTH/findings" | jq 'length')"
+[[ "$N_AUTH_FIND" -ge 1 ]]
+
+echo "OK: crAPI authenticated e2e passed (findings=$N_AUTH_FIND, scan_auth=$SCAN_AUTH, email=$EMAIL)"

@@ -120,6 +120,7 @@ For the same checks against **local OWASP crAPI** (clone + upstream compose + Ax
 
 ```text
 make e2e-crapi
+make e2e-crapi-auth   # adds signup/login JWT + second scan with auth_headers
 ```
 
 Details and teardown: [testing.md](testing.md#local-docker-end-to-end-v1).

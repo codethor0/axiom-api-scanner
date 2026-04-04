@@ -554,6 +554,45 @@ func TestScanRunStatus_returnsProgress(t *testing.T) {
 	if st.Progress.EndpointsDiscovered != 0 {
 		t.Fatalf("progress %+v", st.Progress)
 	}
+	if st.Coverage.AuthHeadersConfigured || st.Coverage.EndpointsDeclaringSecurity != 0 {
+		t.Fatalf("coverage %+v", st.Coverage)
+	}
+}
+
+func TestScanRunStatus_coverageHintsDeclaredSecurity(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{
+		{Method: "GET", Path: "/r/{id}", SecuritySchemeHints: []string{"bearerAuth"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Coverage.EndpointsDeclaringSecurity != 1 || st.Coverage.AuthHeadersConfigured {
+		t.Fatalf("%+v", st.Coverage)
+	}
+	if len(st.Coverage.Hints) != 1 || !strings.Contains(st.Coverage.Hints[0], "auth_headers") {
+		t.Fatalf("%+v", st.Coverage.Hints)
+	}
 }
 
 func TestScanRunControl_start_requiresOrchestrator(t *testing.T) {

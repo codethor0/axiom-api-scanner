@@ -57,9 +57,10 @@ Operator read model for orchestration. Returns `200` with a stable JSON object:
 | `phase` | Current `run_phase` (`planned`, `baseline_running`, `baseline_complete`, `mutation_running`, `mutation_complete`, `findings_complete`, `failed`, `canceled`) |
 | `scan_status` | Lifecycle `status` on the same row (`queued`, `running`, etc.) |
 | `progress` | Object with `endpoints_discovered` (count of imported endpoints), `baseline_executions_completed`, `mutation_executions_completed`, `findings_created` (denormalized counters from the scan row) |
+| `coverage` | Operator hints (no secret values): `auth_headers_configured`, `endpoints_declaring_security`, and `hints` (e.g. missing auth when the spec declares security, or confirmation when auth is configured). |
 | `last_error` | Populated when `phase` is `failed` or when baseline/mutation failure messages apply |
 
-Counts reflect stored scan columns, not a separate progress bar.
+Counts reflect stored scan columns, not a separate progress bar. Per-endpoint skip reasons (for example `post_requires_json_request_body`) appear in the **`POST .../executions/baseline`** response body under `result.skipped_detail`, not in this status object.
 
 ### POST /v1/scans/{scanID}/run
 
@@ -84,7 +85,7 @@ The granular routes `POST .../executions/baseline` and `POST .../executions/muta
 
 ### POST /v1/scans/{scanID}/specs/openapi
 
-Body: raw OpenAPI 3.x YAML or JSON (same limits as global validate). Persists endpoints for this scan (full replace). Response:
+Body: raw OpenAPI 3.x YAML or JSON (same limits as global validate). Persists endpoints for this scan (full replace). Before validation, the importer **clears schema and parameter `example` fields** so published specs with non-strict examples (for example string literals for numeric types) can still be imported; examples are not used for endpoint discovery. Response:
 
 ```json
 {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
@@ -39,6 +40,26 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
 		return
 	}
+	secEndpoints := 0
+	for _, ep := range endpoints {
+		if len(ep.SecuritySchemeHints) > 0 {
+			secEndpoints++
+		}
+	}
+	authConfigured := len(scan.AuthHeaders) > 0
+	cov := ScanRunCoverage{
+		AuthHeadersConfigured:      authConfigured,
+		EndpointsDeclaringSecurity: secEndpoints,
+	}
+	if secEndpoints > 0 && !authConfigured {
+		cov.Hints = append(cov.Hints, "imported operations include OpenAPI-declared security ("+strconv.Itoa(secEndpoints)+" operation(s)); scan has no auth_headers, so protected routes may return 401/403 and V1 eligible work may be reduced")
+	}
+	if authConfigured && secEndpoints > 0 {
+		cov.Hints = append(cov.Hints, "auth_headers are present; outbound baseline and mutation requests will include them (sensitive values are never returned by this API)")
+	}
+	if secEndpoints == 0 && !authConfigured && len(endpoints) > 0 {
+		cov.Hints = append(cov.Hints, "no operations in the imported spec declare security schemes; auth may still be required by the target for routes not reflected in OpenAPI")
+	}
 	out := ScanRunStatusResponse{
 		ScanID:     scan.ID,
 		Phase:      string(scan.RunPhase),
@@ -49,6 +70,7 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 			MutationExecutionsCompleted: scan.MutationCandidatesDone,
 			FindingsCreated:             scan.FindingsCount,
 		},
+		Coverage:  cov,
 		LastError: lastRunError(scan),
 	}
 	writeJSON(w, http.StatusOK, out)

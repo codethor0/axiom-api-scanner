@@ -109,6 +109,8 @@ docker compose -f deploy/e2e/docker-compose.yml down
 ```text
 docker info
 make e2e-crapi
+# optional: JWT via identity API + authenticated scan
+make e2e-crapi-auth
 ```
 
 This runs `scripts/e2e_crapi.sh`, which:
@@ -123,9 +125,11 @@ This runs `scripts/e2e_crapi.sh`, which:
 
 **OpenAPI source:** The spec is read from the **same commit as the cloned repo**, not from a live HTTP URL on crAPI (the gateway does not need to expose Swagger for import). Raw upstream URL for reference only: `https://raw.githubusercontent.com/OWASP/crAPI/develop/openapi-spec/crapi-openapi-spec.json`.
 
-**What is actually exercised:** V1 **GET** and **JSON POST** baseline/mutation paths against crAPI’s reachable operations; **safe** rules under `rules/` (planner-eligible operations only); **diff/matchers** and **finding + evidence_summary** persistence when matchers complete; **read APIs** for executions/findings; **orchestrator** idempotent `resume` after completion. Finding counts vary with rules and responses (automated run observed non-zero findings).
+**What is actually exercised (unauthenticated scan in `make e2e-crapi`):** V1 **GET** and **JSON POST** baseline/mutation paths against crAPI’s reachable operations without `auth_headers`; **safe** rules under `rules/`; **diff/matchers** and **finding + evidence_summary**; **read APIs**; **orchestrator** idempotent `resume`.
 
-**Not exercised in this harness:** crAPI **authenticated** sessions (no `auth_headers` / JWT setup in the script), browser-only flows, non–safe rule modes, Juice Shop, or coverage guarantees for every path in the spec.
+**Authenticated leg (`make e2e-crapi-auth`):** Same as `e2e-crapi`, then **API-only** `POST /identity/api/auth/signup` and `POST /identity/api/auth/login` against **local crAPI** to obtain a JWT (`token` in JSON). A second Axiom scan is created with **`auth_headers`** `Authorization: Bearer <jwt>`, then import, baseline, mutations, and findings run again. The script asserts at least one **baseline** `POST` to **`/community/api/v2/community/posts`** did **not** return **401** (token accepted). It does **not** prove every bearer-protected challenge in crAPI, full role separation, or browser OTP flows.
+
+**Not exercised:** Juice Shop, broad rule packs beyond repo `rules/`, non-safe modes, or guaranteed coverage of every path in the spec. Multi-step flows (refresh tokens, email OTP) are out of scope for this harness.
 
 **Teardown crAPI:** from `.cache/crapi/deploy/docker`: `docker compose -f docker-compose.yml down` (destroys crAPI volumes if you add `-v`; only do that when you intend to reset lab data).
 

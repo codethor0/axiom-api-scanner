@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint run-api migrate-up migrate-down test-integration e2e-local e2e-crapi
+.PHONY: build test fmt lint run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth
 
 # CLI migrate must match github.com/golang-migrate/migrate/v4 used by internal/dbmigrate.
 MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
@@ -41,3 +41,8 @@ e2e-local:
 e2e-crapi:
 	chmod +x ./scripts/e2e_crapi.sh
 	./scripts/e2e_crapi.sh
+
+# Same as e2e-crapi plus signup/login JWT and authenticated scan leg (requires same Docker targets).
+e2e-crapi-auth:
+	chmod +x ./scripts/e2e_crapi.sh
+	RUN_AUTHENTICATED_LEG=1 ./scripts/e2e_crapi.sh
