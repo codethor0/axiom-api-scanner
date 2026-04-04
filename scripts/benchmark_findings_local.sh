@@ -7,6 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# shellcheck source=local_stack_preflight.sh
+source "$ROOT/scripts/local_stack_preflight.sh"
+
 COMPOSE_FILE="$ROOT/deploy/e2e/docker-compose.yml"
 export COMPOSE_FILE
 
@@ -15,8 +18,14 @@ RATE_STUB_URL="${RATE_STUB_URL:-http://127.0.0.1:18081}"
 AXIOM_URL="${AXIOM_URL:-http://127.0.0.1:8080}"
 DATABASE_URL="${DATABASE_URL:-postgres://axiom:axiom@127.0.0.1:54334/axiom_e2e?sslmode=disable}"
 
+require_repo_paths "$ROOT" "$COMPOSE_FILE"
+if [[ ! -f "$ROOT/testdata/e2e/bench-rate-limit-stub.yaml" ]]; then
+  echo "benchmark: missing $ROOT/testdata/e2e/bench-rate-limit-stub.yaml (scan B OpenAPI fixture)." >&2
+  exit 1
+fi
+
 need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }
+  command -v "$1" >/dev/null 2>&1 || { echo "benchmark: missing required command on PATH: $1" >&2; exit 1; }
 }
 
 need_cmd docker
@@ -24,10 +33,12 @@ need_cmd curl
 need_cmd jq
 need_cmd go
 
-if ! docker info >/dev/null 2>&1; then
-  echo "docker daemon not reachable" >&2
-  exit 1
-fi
+require_docker_daemon
+
+echo "==> benchmark preflight (local-only; not run in CI)"
+echo "    compose: $COMPOSE_FILE"
+echo "    httpbin: $HTTPBIN_URL  rate_stub: $RATE_STUB_URL  api: $AXIOM_URL"
+echo "    DATABASE_URL host port should match axiom-pg publish (default 54334). Override env vars if ports conflict."
 
 docker compose -f "$COMPOSE_FILE" up -d axiom-pg httpbin rate-limit-bench
 
@@ -36,7 +47,9 @@ for i in $(seq 1 60); do
     break
   fi
   if [[ "$i" -eq 60 ]]; then
-    echo "postgres not ready" >&2
+    echo "benchmark: postgres not ready after 60s (axiom-pg). Logs:" >&2
+    docker compose -f "$COMPOSE_FILE" logs axiom-pg --tail 40 >&2 || true
+    echo "benchmark: check nothing else bound compose port 54334; see deploy/e2e/docker-compose.yml" >&2
     exit 1
   fi
   sleep 1
@@ -64,19 +77,29 @@ for i in $(seq 1 60); do
     break
   fi
   if [[ "$i" -eq 60 ]]; then
-    echo "API did not become ready at $AXIOM_URL" >&2
+    echo "benchmark: API did not become ready at $AXIOM_URL (waited 60s)." >&2
+    echo "benchmark: if port 8080 is busy, set AXIOM_HTTP_ADDR=127.0.0.1:<free> and the same host:port in AXIOM_URL." >&2
     exit 1
   fi
   sleep 1
 done
 
-curl -sf "$HTTPBIN_URL/get" | jq -e .url >/dev/null
-curl -sf "$RATE_STUB_URL/rate-probe" >/dev/null
+if ! curl -sf "$HTTPBIN_URL/get" | jq -e .url >/dev/null; then
+  echo "benchmark: httpbin not reachable at $HTTPBIN_URL (compose service httpbin, default host 18080)." >&2
+  echo "benchmark: ensure docker compose brought httpbin up: docker compose -f $COMPOSE_FILE ps httpbin" >&2
+  exit 1
+fi
+if ! curl -sf "$RATE_STUB_URL/rate-probe" >/dev/null; then
+  echo "benchmark: rate-limit bench stub not reachable at $RATE_STUB_URL (compose rate-limit-bench, default 18081)." >&2
+  exit 1
+fi
 # Baseline vs rotated identity: header must change (stub maps X-Forwarded-For 127.0.0.2 -> 7, default -> 10).
 H_BASE="$(curl -sD - -o /dev/null "$RATE_STUB_URL/rate-probe" | tr -d '\r' | grep -i '^X-RateLimit-Remaining:' | awk '{print $2}')"
 H_ROT="$(curl -sD - -o /dev/null -H 'X-Forwarded-For: 127.0.0.2' "$RATE_STUB_URL/rate-probe" | tr -d '\r' | grep -i '^X-RateLimit-Remaining:' | awk '{print $2}')"
 if [[ -z "$H_BASE" || -z "$H_ROT" || "$H_BASE" == "$H_ROT" ]]; then
-  echo "benchmark failed: rate-limit stub must return distinct X-RateLimit-Remaining (got base='$H_BASE' rotated='$H_ROT')" >&2
+  echo "benchmark: rate-limit stub must return distinct X-RateLimit-Remaining (got base='$H_BASE' rotated='$H_ROT')." >&2
+  echo "benchmark: check deploy/e2e/rate-limit-bench/nginx.conf and compose service rate-limit-bench logs." >&2
+  docker compose -f "$COMPOSE_FILE" logs rate-limit-bench --tail 30 >&2 || true
   exit 1
 fi
 
@@ -338,3 +361,5 @@ curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions/$RL_EXEC" | jq -e '.phase == "
 echo "    bench_harness scan=B pathnorm_fixture_artifact codes=${BENCH_CODES_STUB_PATHNORM_TENTATIVE}"
 
 echo "OK: finding-quality benchmark passed (httpbin + rate stub, four V1 families with honest httpbin no-finding for rate limit)."
+echo "==> benchmark exercised: scan_A id=$SCAN_ID (4 findings; 0 rows for $RULE_RATELIMIT on httpbin); scan_B id=$SCAN_RL (2 findings). bench_* harness lines above; interpretation_hints on API rows are scanner-policy only (see docs/testing.md)."
+echo "==> note: GitHub Actions runs go test/vet/lint only; this Docker benchmark stays local."

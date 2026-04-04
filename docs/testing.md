@@ -11,7 +11,18 @@
 | `golangci-lint run` | Linters from [.golangci.yml](../.golangci.yml) (includes `govet` with shadow detection) |
 | `go test ./... -count=1` | Full module tests with `AXIOM_TEST_DATABASE_URL` pointing at a job service container (`postgres:16-alpine`) |
 
-**Not in CI** (heavy, flaky, or third-party stack): `make e2e-local`, `make benchmark-findings-local`, `make e2e-crapi`, `make e2e-crapi-auth`, manual targets, or anything requiring cloned OWASP crAPI images beyond this workflow.
+**Not in CI** (heavy, flaky, or third-party stack): `make e2e-local`, `make benchmark-findings-local`, `make e2e-crapi`, `make e2e-crapi-auth`, manual targets, or anything requiring cloned OWASP crAPI images beyond this workflow. There is **no** workflow job that runs the Docker benchmark today; reproducibility depends on contributors using the Makefile targets locally.
+
+### Local Docker prerequisite summary (e2e + benchmark)
+
+Run **`make e2e-local`** or **`make benchmark-findings-local`** from the **repository root** after a normal clone (scripts assert **`deploy/e2e/docker-compose.yml`**, **`rules/`**, **`migrations/`**, and **`testdata/e2e/httpbin-openapi.yaml`** exist; the benchmark also needs **`testdata/e2e/bench-rate-limit-stub.yaml`**).
+
+| Need | Notes |
+| --- | --- |
+| **Docker daemon** | Scripts print a clear error if `docker info` fails (daemon stopped or permission denied). |
+| **Commands** | **`docker`**, **`curl`**, **`jq`**, **`go`** (same **`go` version family** as **`go.mod`**). |
+| **Default localhost ports** | Postgres **54334**, httpbin **18080**, rate stub **18081**, API **8080**. If a port is busy, override **`DATABASE_URL`**, **`HTTPBIN_URL`**, **`RATE_STUB_URL`**, and matching **`AXIOM_HTTP_ADDR`** + **`AXIOM_URL`** (benchmark and e2e use **`127.0.0.1:8080`** by default). |
+| **Failure hints** | Scripts tail **`docker compose logs`** for Postgres or the rate stub when health checks time out; API wait failures mention **`AXIOM_HTTP_ADDR`** / **`AXIOM_URL`** mismatch. Shared checks live in **`scripts/local_stack_preflight.sh`**. |
 
 **Mirror CI locally:** with Postgres listening and a dedicated database:
 

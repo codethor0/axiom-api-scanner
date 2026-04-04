@@ -62,7 +62,12 @@ After a scan has imported endpoints and a `base_url`, you can run baseline and m
 
 **Continuous integration:** push and pull requests on `main` run GitHub Actions: migration layout checks, `go vet`, `golangci-lint`, and `go test ./...` against a PostgreSQL 16 service (sets `AXIOM_TEST_DATABASE_URL` so `internal/storage/postgres` integration tests run). See [docs/testing.md](docs/testing.md#ci-vs-local).
 
-**Local validation:** with Docker available, `make e2e-local` runs an automated import, baseline, mutation, finding, execution/endpoint/run-status drilldown, and orchestration smoke against a local httpbin container (see [docs/testing.md](docs/testing.md#local-docker-end-to-end-v1) for exact `jq` assertions and `run.phase` semantics for ad-hoc vs orchestrated runs). `make e2e-crapi` runs the same class of checks against **[OWASP crAPI](https://github.com/OWASP/crAPI)** in Docker (clone under `.cache/crapi`). `make e2e-crapi-auth` adds an API-only signup/login JWT and re-runs baseline/mutations with `auth_headers`. Those Docker end-to-end flows are **local-only** (not in CI). See [docs/testing.md](docs/testing.md).
+**Local validation:** with Docker available, run from the **repository root** so `./rules`, `./migrations`, and `deploy/e2e/docker-compose.yml` resolve.
+
+- `make e2e-local` — Postgres + httpbin, ad-hoc baseline/mutations, findings read paths, orchestrator smoke (**[docs/testing.md](docs/testing.md#local-docker-end-to-end-v1)**).
+- `make benchmark-findings-local` — same stack plus a **local nginx** rate-limit stub; asserts builtin rule tiers, **`interpretation_hints`**, and harness-only **`bench_*`** codes (see [docs/testing.md](docs/testing.md#finding-quality-benchmark-local-httpbin-and-nginx-rate-stub)). Default bind ports **54334** (Postgres), **18080** (httpbin), **18081** (stub), **8080** (API); set **`AXIOM_HTTP_ADDR`**, **`AXIOM_URL`**, **`HTTPBIN_URL`**, **`RATE_STUB_URL`**, **`DATABASE_URL`** if yours conflict. **GitHub Actions does not run** these Docker scripts (CI is `go vet` / lint / `go test` only per [.github/workflows/ci.yml](.github/workflows/ci.yml)).
+
+`make e2e-crapi` runs the same class of checks against **[OWASP crAPI](https://github.com/OWASP/crAPI)** in Docker (clone under `.cache/crapi`). `make e2e-crapi-auth` adds an API-only signup/login JWT and re-runs baseline/mutations with `auth_headers`. See [docs/testing.md](docs/testing.md).
 
 ## Documentation
 

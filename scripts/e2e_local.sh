@@ -6,6 +6,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# shellcheck source=local_stack_preflight.sh
+source "$ROOT/scripts/local_stack_preflight.sh"
+
 COMPOSE_FILE="$ROOT/deploy/e2e/docker-compose.yml"
 export COMPOSE_FILE
 
@@ -15,8 +18,10 @@ DATABASE_URL="${DATABASE_URL:-postgres://axiom:axiom@127.0.0.1:54334/axiom_e2e?s
 CRAPI_OPENAPI_URL="${CRAPI_OPENAPI_URL:-}"
 SKIP_CRAPI="${SKIP_CRAPI:-1}"
 
+require_repo_paths "$ROOT" "$COMPOSE_FILE"
+
 need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }
+  command -v "$1" >/dev/null 2>&1 || { echo "e2e-local: missing required command on PATH: $1" >&2; exit 1; }
 }
 
 need_cmd docker
@@ -24,11 +29,9 @@ need_cmd curl
 need_cmd jq
 need_cmd go
 
-if ! docker info >/dev/null 2>&1; then
-  echo "docker daemon not reachable" >&2
-  exit 1
-fi
+require_docker_daemon
 
+echo "==> e2e-local preflight: httpbin=$HTTPBIN_URL api=$AXIOM_URL db=$DATABASE_URL (override env if ports conflict)"
 echo "==> compose: postgres + httpbin"
 docker compose -f "$COMPOSE_FILE" up -d axiom-pg httpbin
 
@@ -38,7 +41,8 @@ for i in $(seq 1 60); do
     break
   fi
   if [[ "$i" -eq 60 ]]; then
-    echo "postgres not ready" >&2
+    echo "e2e-local: postgres not ready after 60s (axiom-pg). Logs:" >&2
+    docker compose -f "$COMPOSE_FILE" logs axiom-pg --tail 40 >&2 || true
     exit 1
   fi
   sleep 1
@@ -68,14 +72,18 @@ for i in $(seq 1 60); do
     break
   fi
   if [[ "$i" -eq 60 ]]; then
-    echo "API did not become ready at $AXIOM_URL" >&2
+    echo "e2e-local: API did not become ready at $AXIOM_URL (waited 60s)." >&2
+    echo "e2e-local: if port 8080 is busy, set AXIOM_HTTP_ADDR=127.0.0.1:<free> and matching AXIOM_URL." >&2
     exit 1
   fi
   sleep 1
 done
 
 echo "==> httpbin health"
-curl -sf "$HTTPBIN_URL/get" | jq -e .url >/dev/null
+if ! curl -sf "$HTTPBIN_URL/get" | jq -e .url >/dev/null; then
+  echo "e2e-local: httpbin not reachable at $HTTPBIN_URL" >&2
+  exit 1
+fi
 
 echo "==> E2E: create scan + target"
 SCAN_ID="$(
@@ -221,3 +229,4 @@ else
 fi
 
 echo "OK: local e2e validation passed (httpbin path + orchestrator smoke)."
+echo "==> note: GitHub Actions does not run this script; use make benchmark-findings-local for tier/harness checks on builtin rules."

@@ -55,12 +55,14 @@ run-api: build
 	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL is required"; exit 1)
 	AXIOM_RULES_DIR=./rules AXIOM_HTTP_ADDR=:8080 DATABASE_URL="$(DATABASE_URL)" ./bin/axiom-api
 
-# Docker-backed local V1 flow (Postgres + httpbin). Requires docker, curl, jq. See docs/testing.md.
+# Docker-backed local V1 flow (Postgres + httpbin). Requires docker, curl, jq, Go. See docs/testing.md.
 e2e-local:
+	@echo "e2e-local: needs Docker + repo checkout with deploy/e2e/, rules/, migrations/; see docs/testing.md (local Docker end-to-end)."
 	./scripts/e2e_local.sh
 
-# Finding-quality benchmark on httpbin + rules/builtin (tier invariants + summary text). See docs/testing.md.
+# Finding-quality benchmark: httpbin + nginx rate stub + builtin rules (tier + bench_* harness). Not CI. See docs/testing.md.
 benchmark-findings-local:
+	@echo "benchmark-findings-local: needs Docker; default localhost ports 54334 18080 18081 8080 — override via env if busy (docs/testing.md)."
 	chmod +x ./scripts/benchmark_findings_local.sh
 	./scripts/benchmark_findings_local.sh
 
