@@ -26,6 +26,8 @@ make ci
 make ci-unit
 ```
 
+**Workflow YAML (optional):** `make workflow-lint` runs [actionlint](https://github.com/rhysd/actionlint) on `.github/workflows/*.yml` via `go run` (network on first run). This is not part of `make ci` / `make ci-unit`.
+
 ## Goals
 
 - Prove correctness of parsers, validation, and planning logic.
@@ -65,7 +67,7 @@ Optional:
 
 | Variable | Purpose |
 | --- | --- |
-| `AXIOM_TEST_MIGRATIONS_DIR` | Path to migrations directory (default: `migrations` relative to the process working directory). |
+| `AXIOM_TEST_MIGRATIONS_DIR` | Absolute or relative path to SQL migrations. When unset, postgres integration tests resolve the repository `migrations/` directory from the `internal/storage/postgres` package path (normal clone layout), not from the shell `cwd`. |
 
 Run only the postgres package (recommended after schema changes):
 

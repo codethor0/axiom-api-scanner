@@ -111,6 +111,12 @@ make test-integration
 
 When `AXIOM_TEST_DATABASE_URL` is unset, `go test ./...` skips those tests; `make ci` fails fast if the variable is unset so local runs match the Actions job.
 
+Optional GitHub Actions YAML check (same validator many teams run locally; needs network the first time):
+
+```text
+make workflow-lint
+```
+
 ## Local end-to-end validation (Docker)
 
 For a full V1 smoke against **local** httpbin + Postgres (no third-party targets), use:

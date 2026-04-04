@@ -1,4 +1,4 @@
-.PHONY: build test fmt vet lint check-migrations ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth
+.PHONY: build test fmt vet lint check-migrations workflow-lint ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth
 
 # CLI migrate must match github.com/golang-migrate/migrate/v4 used by internal/dbmigrate.
 MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
@@ -23,6 +23,10 @@ ci-unit: check-migrations vet lint
 
 check-migrations:
 	./scripts/check_migrations.sh
+
+# Optional: validate .github/workflows/*.yml (downloads actionlint via go run on first use; requires network).
+workflow-lint:
+	go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
 
 vet:
 	go vet ./...
