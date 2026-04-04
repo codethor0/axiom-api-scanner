@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -521,6 +522,77 @@ func TestCreateScan_persistsAndGets(t *testing.T) {
 	defer func() { _ = getResp.Body.Close() }()
 	if getResp.StatusCode != http.StatusOK {
 		t.Fatalf("get status %d", getResp.StatusCode)
+	}
+}
+
+func TestScanRunStatus_findingsAndRuleFamilyCoverage(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{{Method: "GET", Path: "/r/{id}"}}); rerr != nil {
+		t.Fatal(rerr)
+	}
+	if uerr := mem.UpdateBaselineState(ctx, scan.ID, storage.BaselineState{Status: "succeeded", Total: 1, Done: 1}); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if uerr := mem.UpdateMutationState(ctx, scan.ID, storage.MutationState{Status: "succeeded", Total: 1, Done: 1}); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if _, ierr := mem.InsertExecutionRecord(ctx, engine.ExecutionRecord{
+		ScanID:         scan.ID,
+		ScanEndpointID: "ep1",
+		Phase:          engine.PhaseMutated,
+		RuleID:         "axiom.idor.path_swap.v1",
+		RequestMethod:  "GET",
+		RequestURL:     "http://example/r/1",
+	}); ierr != nil {
+		t.Fatal(ierr)
+	}
+	if _, ferr := mem.CreateFinding(ctx, storage.CreateFindingInput{
+		ScanID:                 scan.ID,
+		RuleID:                 "axiom.idor.path_swap.v1",
+		Category:               "broken_object_level_authorization",
+		Severity:               findings.SeverityHigh,
+		RuleDeclaredConfidence: "high",
+		AssessmentTier:         "confirmed",
+		Summary:                "probe",
+		ScanEndpointID:         "e1",
+		BaselineExecutionID:    "b1",
+		MutatedExecutionID:     "m1",
+		Evidence:               storage.CreateEvidenceInput{},
+	}); ferr != nil {
+		t.Fatal(ferr)
+	}
+	h := testHandler(mem)
+	h.RulesDir = filepath.Join("..", "..", "rules", "builtin")
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var st ScanRunStatusResponse
+	if derr := json.NewDecoder(resp.Body).Decode(&st); derr != nil {
+		t.Fatal(derr)
+	}
+	if st.FindingsSummary.Total != 1 || st.FindingsSummary.BySeverity["high"] != 1 || st.FindingsSummary.ByAssessmentTier["confirmed"] != 1 {
+		t.Fatalf("findings_summary %+v", st.FindingsSummary)
+	}
+	if st.Summary.FindingsCreated != 1 || st.Summary.EndpointsImported != 1 {
+		t.Fatalf("summary %+v", st.Summary)
+	}
+	if !st.RuleFamilyCoverage.IDORPathOrQuery.Exercised || st.RuleFamilyCoverage.IDORPathOrQuery.MutatedExecutions != 1 {
+		t.Fatalf("idor %+v", st.RuleFamilyCoverage.IDORPathOrQuery)
+	}
+	if st.RuleFamilyCoverage.UnavailableReason != nil {
+		t.Fatalf("unexpected unavailable: %+v", st.RuleFamilyCoverage.UnavailableReason)
 	}
 }
 

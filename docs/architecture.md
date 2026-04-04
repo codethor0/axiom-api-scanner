@@ -70,11 +70,11 @@ Repositories cover scans (target, auth, `run_phase`, `run_error`, baseline and m
 4. `POST /v1/scans/{id}/executions/baseline` runs the baseline runner alone, writes baseline `execution_records`, updates baseline progress fields, returns runner output plus planner decisions and a capped mutation preview from `AXIOM_RULES_DIR`.
 5. `POST /v1/scans/{id}/executions/mutations` runs mutations sequentially from the same rule set (no broad concurrency). Writes mutated `execution_records` (with stable `candidate_key` for resume), runs diff vs the latest baseline per endpoint, and persists findings plus evidence when all matchers pass. Re-running with the same candidate reuses the stored mutated execution and does not insert a second finding for the same evidence tuple.
 6. `GET /v1/scans/{id}/executions` and `GET .../executions/{executionID}` return stored exchanges (optional `phase` and `scan_endpoint_id` query filters on the list).
-7. `GET /v1/scans/{id}/run/status` returns canonical `scan`, `run`, `progress`, `coverage`, and `diagnostics` objects; `compatibility` holds legacy mirrors (`scan_id`, `phase`, `scan_status`, `last_error` = orchestrator error only). Operator errors are split: `run.orchestrator_error` vs sub-runner fields only when those sub-statuses are `failed`.
+7. `GET /v1/scans/{id}/run/status` returns canonical `scan`, `run`, `progress`, `summary` (derived scan-row counters plus imported endpoint count), `findings_summary` (aggregates from stored findings), `rule_family_coverage` (mutated `execution_records` joined to rules from `AXIOM_RULES_DIR`, four V1 families), `guidance` (`next_steps` grounded in the same facts as diagnostics), `coverage`, and `diagnostics`; `compatibility` holds legacy mirrors (`scan_id`, `phase`, `scan_status`, `last_error` = orchestrator error only). Operator errors are split: `run.orchestrator_error` vs sub-runner fields only when those sub-statuses are `failed`.
 
 ## Limitations (honest)
 
-- Orchestration is in-process and blocking for the HTTP request that calls `start`/`resume`; there is no job queue or worker handoff yet.
+- Orchestration is in-process and blocking for the HTTP request that calls `start`/`resume`; there is no job queue or worker handoff yet. `GET .../run/status` is read-only but may list findings and executions to build summaries; it does not broaden write surface or start work.
 - No worker offload, no parallel mutation flood, no arbitrary fuzzing.
 - Diff matchers are intentionally narrow; weak matcher configurations yield `tentative` findings rather than `confirmed` when evidence is otherwise complete.
 - No automated mutated-vs-mutated comparisons; only baseline vs one mutated execution per candidate step.

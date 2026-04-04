@@ -89,21 +89,72 @@ type ScanRunCoverage struct {
 	Hints                      []string `json:"hints,omitempty"`
 }
 
+// ScanRunPhaseCounts summarizes one runner line from persisted scan columns (no percentages).
+// Total is the planner/runner total (baseline endpoints or mutation candidates). Skipped is max(0, total-completed)
+// only when that runner reports status succeeded; otherwise skipped is zero (remaining work is not labeled skipped).
+type ScanRunPhaseCounts struct {
+	RunStatus string `json:"run_status,omitempty"`
+	Total     int    `json:"total"`
+	Completed int    `json:"completed"`
+	Skipped   int    `json:"skipped"`
+}
+
+// ScanRunReadSummary is a compact operator read model: counts from the scan row plus imported endpoint inventory.
+type ScanRunReadSummary struct {
+	EndpointsImported int                `json:"endpoints_imported"`
+	Baseline          ScanRunPhaseCounts `json:"baseline"`
+	Mutation          ScanRunPhaseCounts `json:"mutation"`
+	FindingsCreated   int                `json:"findings_created"`
+}
+
+// ScanFindingsSummary aggregates persisted findings rows for this scan (read-only; no new list filters here).
+type ScanFindingsSummary struct {
+	Total            int            `json:"total"`
+	ByAssessmentTier map[string]int `json:"by_assessment_tier,omitempty"`
+	BySeverity       map[string]int `json:"by_severity,omitempty"`
+}
+
+// ScanRunFamilyCoverageEntry describes whether a V1 rule family had recorded mutated traffic, from rules pack + execution_records only.
+type ScanRunFamilyCoverageEntry struct {
+	Exercised          bool                   `json:"exercised"`
+	RulesInPack        int                    `json:"rules_in_pack"`
+	MutatedExecutions  int                    `json:"mutated_executions"`
+	NotExercisedReason *ScanRunDiagnosticLine `json:"not_exercised_reason,omitempty"`
+}
+
+// ScanRunRuleFamilyCoverage maps stable V1 mutation families to coverage signals (see docs/api.md).
+type ScanRunRuleFamilyCoverage struct {
+	UnavailableReason *ScanRunDiagnosticLine     `json:"unavailable,omitempty"`
+	IDORPathOrQuery   ScanRunFamilyCoverageEntry `json:"idor_path_or_query_swap"`
+	MassAssignment    ScanRunFamilyCoverageEntry `json:"mass_assignment_privilege_injection"`
+	PathNormalization ScanRunFamilyCoverageEntry `json:"path_normalization_bypass"`
+	RateLimitHeaders  ScanRunFamilyCoverageEntry `json:"rate_limit_header_rotation"`
+}
+
+// ScanRunGuidance lists short, actionable next steps grounded in the same state as diagnostics (deterministic order).
+type ScanRunGuidance struct {
+	NextSteps []ScanRunDiagnosticLine `json:"next_steps,omitempty"`
+}
+
 // ScanRunStatusResponse canonical JSON shape for GET/POST .../run/status responses.
-// Canonical groups: scan, run, progress, coverage, diagnostics. compatibility is the only non-canonical group (explicit mirror).
+// Canonical groups: scan, run, progress, summary, findings_summary, rule_family_coverage, guidance, coverage, diagnostics. compatibility is the only non-canonical group (explicit mirror).
 type ScanRunStatusResponse struct {
-	Scan          ScanRunScanSummary   `json:"scan"`
-	Run           ScanRunState         `json:"run"`
-	Progress      ScanRunProgress      `json:"progress"`
-	Coverage      ScanRunCoverage      `json:"coverage"`
-	Diagnostics   ScanRunDiagnostics   `json:"diagnostics"`
-	Compatibility ScanRunCompatibility `json:"compatibility"`
+	Scan               ScanRunScanSummary        `json:"scan"`
+	Run                ScanRunState              `json:"run"`
+	Progress           ScanRunProgress           `json:"progress"`
+	Summary            ScanRunReadSummary        `json:"summary"`
+	FindingsSummary    ScanFindingsSummary       `json:"findings_summary"`
+	RuleFamilyCoverage ScanRunRuleFamilyCoverage `json:"rule_family_coverage"`
+	Guidance           ScanRunGuidance           `json:"guidance"`
+	Coverage           ScanRunCoverage           `json:"coverage"`
+	Diagnostics        ScanRunDiagnostics        `json:"diagnostics"`
+	Compatibility      ScanRunCompatibility      `json:"compatibility"`
 }
 
 // ScanRunControlRequest starts, resumes, or cancels a synchronous scan run.
 type ScanRunControlRequest struct {
-	Action               string `json:"action"`
-	ForceRerunBaseline   bool   `json:"force_rerun_baseline,omitempty"`
+	Action             string `json:"action"`
+	ForceRerunBaseline bool   `json:"force_rerun_baseline,omitempty"`
 }
 
 // ErrorResponse is the stable error envelope for API failures.
@@ -149,8 +200,8 @@ type MutationRunAPIResponse struct {
 
 // EndpointPlanSummary binds planner decisions to one imported endpoint.
 type EndpointPlanSummary struct {
-	EndpointID   string          `json:"endpoint_id"`
-	PathTemplate string          `json:"path_template"`
-	Method       string          `json:"method"`
+	EndpointID   string            `json:"endpoint_id"`
+	PathTemplate string            `json:"path_template"`
+	Method       string            `json:"method"`
 	Decisions    []v1plan.Decision `json:"decisions"`
 }

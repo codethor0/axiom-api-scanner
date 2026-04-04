@@ -11,6 +11,7 @@ import (
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/orchestrator"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
@@ -72,6 +73,32 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		MutationRunError:  subMutationErrorOnly(scan),
 	}
 
+	findingsSummary, ferr := buildScanFindingsSummary(r.Context(), h.Findings, id)
+	if ferr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list findings for summary")
+		return
+	}
+
+	var fam ScanRunRuleFamilyCoverage
+	switch {
+	case h.Executions == nil:
+		fam = scanRuleFamilyCoverageExecutionsUnavailable()
+	case strings.TrimSpace(h.RulesDir) == "":
+		fam = scanRuleFamilyCoverageRulesDirMissing()
+	default:
+		rulesList, lerr := rules.Loader{}.LoadDir(h.RulesDir)
+		if lerr != nil {
+			fam = scanRuleFamilyCoverageRulesLoadFailed(lerr)
+		} else {
+			mutated, exErr := h.Executions.ListExecutions(r.Context(), id, storage.ExecutionListFilter{Phase: string(engine.PhaseMutated)})
+			if exErr != nil {
+				writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions for rule family coverage")
+				return
+			}
+			fam = buildScanRunRuleFamilyCoverage(scan, rulesList, mutated)
+		}
+	}
+
 	out := ScanRunStatusResponse{
 		Scan: ScanRunScanSummary{
 			ID:          scan.ID,
@@ -88,8 +115,12 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 			MutationExecutionsCompleted: scan.MutationCandidatesDone,
 			FindingsCreated:             scan.FindingsCount,
 		},
-		Coverage:    cov,
-		Diagnostics: buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured),
+		Summary:            buildScanRunReadSummary(scan, nEp),
+		FindingsSummary:    findingsSummary,
+		RuleFamilyCoverage: fam,
+		Guidance:           buildScanRunGuidance(scan, nEp, secEndpoints, authConfigured),
+		Coverage:           cov,
+		Diagnostics:        buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured),
 		Compatibility: ScanRunCompatibility{
 			ScanID:     scan.ID,
 			Phase:      string(scan.RunPhase),
