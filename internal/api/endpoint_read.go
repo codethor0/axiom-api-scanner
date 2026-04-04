@@ -26,3 +26,13 @@ func endpointReadFromInventory(ent storage.EndpointInventoryEntry, includeSummar
 	}
 	return r
 }
+
+func endpointDetailFromInventory(ent storage.EndpointInventoryEntry) EndpointDetailResponse {
+	r := endpointReadFromInventory(ent, true)
+	return EndpointDetailResponse{
+		EndpointRead: r,
+		Drilldown: EndpointDrilldownHints{
+			ScanEndpointID: ent.Endpoint.ID,
+		},
+	}
+}

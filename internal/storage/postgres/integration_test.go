@@ -387,4 +387,11 @@ func TestFindingWrite_integration(t *testing.T) {
 	if inv.Records[0].Summary.BaselineExecutionsRecorded != 1 || inv.Records[0].Summary.MutationExecutionsRecorded != 1 || inv.Records[0].Summary.FindingsRecorded != 1 {
 		t.Fatalf("ListEndpointInventoryPage summary %+v", inv.Records[0].Summary)
 	}
+	got1, err := s.GetEndpointInventory(ctx, scan.ID, ep.ID, storage.EndpointInventoryOptions{IncludeSummary: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got1.Endpoint.ID != ep.ID || got1.Summary != inv.Records[0].Summary {
+		t.Fatalf("GetEndpointInventory %+v vs list row %+v", got1, inv.Records[0])
+	}
 }

@@ -55,6 +55,17 @@ type EndpointListResponse struct {
 	Meta  ListPageMeta   `json:"meta"`
 }
 
+// EndpointDrilldownHints repeats the persisted scan_endpoint id for related list filters (no URLs encoded; operators pass scan_endpoint_id on executions and findings lists).
+type EndpointDrilldownHints struct {
+	ScanEndpointID string `json:"scan_endpoint_id"`
+}
+
+// EndpointDetailResponse is GET /v1/scans/{scanID}/endpoints/{endpointID}: same fields as EndpointRead (summary always includes grounded execution/finding counts) plus drilldown hints.
+type EndpointDetailResponse struct {
+	EndpointRead
+	Drilldown EndpointDrilldownHints `json:"drilldown"`
+}
+
 // ScanControlRequest transitions scan lifecycle state.
 type ScanControlRequest struct {
 	Action string `json:"action"`

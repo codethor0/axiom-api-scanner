@@ -102,6 +102,78 @@ func TestFindingsList_rejectsInvalidAssessmentTierFilter(t *testing.T) {
 	}
 }
 
+func TestFindingsList_scanEndpointIDFilter(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{
+		{Method: "GET", Path: "/a"},
+		{Method: "GET", Path: "/b"},
+	}); rerr != nil {
+		t.Fatal(rerr)
+	}
+	eps, err := mem.ListScanEndpoints(ctx, scan.ID, storage.EndpointListFilter{})
+	if err != nil || len(eps) != 2 {
+		t.Fatal(eps, err)
+	}
+	epA, epB := eps[0].ID, eps[1].ID
+	for _, in := range []struct {
+		epID   string
+		ruleID string
+	}{
+		{epID: epA, ruleID: "r.a"},
+		{epID: epB, ruleID: "r.b"},
+	} {
+		if _, ferr := mem.CreateFinding(ctx, storage.CreateFindingInput{
+			ScanID: scan.ID, RuleID: in.ruleID, Category: "c",
+			Severity: findings.SeverityLow, RuleDeclaredConfidence: "low", AssessmentTier: "tentative",
+			Summary: "s", ScanEndpointID: in.epID, Evidence: storage.CreateEvidenceInput{},
+		}); ferr != nil {
+			t.Fatal(ferr)
+		}
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/findings?scan_endpoint_id=" + epA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d %s", resp.StatusCode, body)
+	}
+	var env FindingListResponse
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Items) != 1 || env.Items[0].RuleID != "r.a" {
+		t.Fatalf("%+v", env.Items)
+	}
+}
+
+func TestFindingsList_rejectsInvalidScanEndpointID(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/findings?scan_endpoint_id=bad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
 func TestFindingsList_rejectsInvalidSeverityFilter(t *testing.T) {
 	mem := newMemRepositories()
 	ctx := context.Background()

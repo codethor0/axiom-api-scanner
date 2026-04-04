@@ -250,6 +250,39 @@ func (m *memRepositories) ListEndpointInventoryPage(_ context.Context, scanID st
 	return out, nil
 }
 
+func (m *memRepositories) GetEndpointInventory(_ context.Context, scanID, endpointID string, opt storage.EndpointInventoryOptions) (storage.EndpointInventoryEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, ep := range m.endpoints[scanID] {
+		if ep.ID != endpointID {
+			continue
+		}
+		ent := storage.EndpointInventoryEntry{Endpoint: ep}
+		if opt.IncludeSummary {
+			var sum storage.EndpointInventorySummary
+			for _, rec := range m.execRecords {
+				if rec.ScanID != scanID || rec.ScanEndpointID != ep.ID {
+					continue
+				}
+				switch rec.Phase {
+				case engine.PhaseBaseline:
+					sum.BaselineExecutionsRecorded++
+				case engine.PhaseMutated:
+					sum.MutationExecutionsRecorded++
+				}
+			}
+			for _, f := range m.byScan[scanID] {
+				if f.ScanEndpointID == ep.ID {
+					sum.FindingsRecorded++
+				}
+			}
+			ent.Summary = sum
+		}
+		return ent, nil
+	}
+	return storage.EndpointInventoryEntry{}, storage.ErrNotFound
+}
+
 func (m *memRepositories) InsertExecutionRecord(_ context.Context, rec engine.ExecutionRecord) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -623,6 +656,9 @@ func (m *memRepositories) ListByScanID(_ context.Context, scanID string, filter 
 		if filter.RuleID != "" && f.RuleID != filter.RuleID {
 			continue
 		}
+		if filter.ScanEndpointID != "" && f.ScanEndpointID != filter.ScanEndpointID {
+			continue
+		}
 		out = append(out, f)
 	}
 	return out, nil
@@ -643,6 +679,9 @@ func (m *memRepositories) ListFindingsPage(_ context.Context, scanID string, fil
 			continue
 		}
 		if filter.RuleID != "" && f.RuleID != filter.RuleID {
+			continue
+		}
+		if filter.ScanEndpointID != "" && f.ScanEndpointID != filter.ScanEndpointID {
 			continue
 		}
 		list = append(list, f)

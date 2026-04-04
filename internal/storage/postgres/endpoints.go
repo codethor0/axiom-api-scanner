@@ -3,11 +3,14 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // ReplaceScanEndpoints replaces all imported endpoints for a scan.
@@ -262,4 +265,78 @@ WHERE se.scan_id = $1` + andFrag
 		out.NextCursor = cur
 	}
 	return out, nil
+}
+
+// GetEndpointInventory returns one scan_endpoints row for the scan, optionally with inventory summary joins.
+func (s *Store) GetEndpointInventory(ctx context.Context, scanID, endpointID string, opt storage.EndpointInventoryOptions) (storage.EndpointInventoryEntry, error) {
+	if _, err := uuid.Parse(endpointID); err != nil {
+		return storage.EndpointInventoryEntry{}, fmt.Errorf("get endpoint inventory: %w", err)
+	}
+	var hints, reqC, respC string
+	var ent storage.EndpointInventoryEntry
+
+	if opt.IncludeSummary {
+		q := endpointInventoryExecFindingCTEs + `
+SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
+       se.security_scheme_hints::text, se.request_content_types::text, se.response_content_types::text,
+       se.request_body_json, se.created_at,
+       COALESCE(b.n, 0)::int, COALESCE(m.n, 0)::int, COALESCE(f.n, 0)::int
+FROM scan_endpoints se
+LEFT JOIN b ON b.scan_endpoint_id = se.id
+LEFT JOIN m ON m.scan_endpoint_id = se.id
+LEFT JOIN f ON f.scan_endpoint_id = se.id
+WHERE se.scan_id = $1 AND se.id = $2`
+		var sum storage.EndpointInventorySummary
+		err := s.pool.QueryRow(ctx, q, scanID, endpointID).Scan(
+			&ent.Endpoint.ID,
+			&ent.Endpoint.ScanID,
+			&ent.Endpoint.Method,
+			&ent.Endpoint.PathTemplate,
+			&ent.Endpoint.OperationID,
+			&hints,
+			&reqC,
+			&respC,
+			&ent.Endpoint.RequestBodyJSON,
+			&ent.Endpoint.CreatedAt,
+			&sum.BaselineExecutionsRecorded,
+			&sum.MutationExecutionsRecorded,
+			&sum.FindingsRecorded,
+		)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return storage.EndpointInventoryEntry{}, storage.ErrNotFound
+		}
+		if err != nil {
+			return storage.EndpointInventoryEntry{}, fmt.Errorf("get endpoint inventory: %w", err)
+		}
+		ent.Summary = sum
+	} else {
+		q := `
+SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
+       se.security_scheme_hints::text, se.request_content_types::text, se.response_content_types::text,
+       se.request_body_json, se.created_at
+FROM scan_endpoints se
+WHERE se.scan_id = $1 AND se.id = $2`
+		err := s.pool.QueryRow(ctx, q, scanID, endpointID).Scan(
+			&ent.Endpoint.ID,
+			&ent.Endpoint.ScanID,
+			&ent.Endpoint.Method,
+			&ent.Endpoint.PathTemplate,
+			&ent.Endpoint.OperationID,
+			&hints,
+			&reqC,
+			&respC,
+			&ent.Endpoint.RequestBodyJSON,
+			&ent.Endpoint.CreatedAt,
+		)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return storage.EndpointInventoryEntry{}, storage.ErrNotFound
+		}
+		if err != nil {
+			return storage.EndpointInventoryEntry{}, fmt.Errorf("get endpoint inventory: %w", err)
+		}
+	}
+	_ = json.Unmarshal([]byte(hints), &ent.Endpoint.SecuritySchemeHints)
+	_ = json.Unmarshal([]byte(reqC), &ent.Endpoint.RequestContentTypes)
+	_ = json.Unmarshal([]byte(respC), &ent.Endpoint.ResponseContentTypes)
+	return ent, nil
 }

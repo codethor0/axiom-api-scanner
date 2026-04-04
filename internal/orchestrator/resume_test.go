@@ -159,6 +159,18 @@ func (s *stubResumeStore) ListEndpointInventoryPage(ctx context.Context, scanID 
 	}
 	return p, nil
 }
+func (s *stubResumeStore) GetEndpointInventory(ctx context.Context, scanID, endpointID string, opt storage.EndpointInventoryOptions) (storage.EndpointInventoryEntry, error) {
+	eps, err := s.ListScanEndpoints(ctx, scanID, storage.EndpointListFilter{})
+	if err != nil {
+		return storage.EndpointInventoryEntry{}, err
+	}
+	for _, ep := range eps {
+		if ep.ID == endpointID {
+			return storage.EndpointInventoryEntry{Endpoint: ep}, nil
+		}
+	}
+	return storage.EndpointInventoryEntry{}, storage.ErrNotFound
+}
 func (s *stubResumeStore) UpdateBaselineState(_ context.Context, scanID string, st storage.BaselineState) error {
 	if s.scan.ID != scanID {
 		return storage.ErrNotFound

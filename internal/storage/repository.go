@@ -93,6 +93,8 @@ type FindingListFilter struct {
 	RuleDeclaredConfidence string
 	// RuleID filters by findings.rule_id (exact match).
 	RuleID string
+	// ScanEndpointID filters by findings.scan_endpoint_id (UUID string; exact match).
+	ScanEndpointID string
 }
 
 // ExecutionRepository stores HTTP exchange evidence rows.
@@ -117,6 +119,8 @@ type EndpointRepository interface {
 	ListScanEndpointsForRunStatus(ctx context.Context, scanID string, filter EndpointListFilter) ([]engine.ScanEndpoint, error)
 	// ListEndpointInventoryPage returns one page of inventory rows (keyset cursor, deterministic sort); see EndpointListPageOptions.
 	ListEndpointInventoryPage(ctx context.Context, scanID string, filter EndpointListFilter, opt EndpointInventoryOptions, page EndpointListPageOptions) (EndpointListPage, error)
+	// GetEndpointInventory returns one imported endpoint for the scan. IncludeSummary joins execution/finding counts (same semantics as list inventory summary).
+	GetEndpointInventory(ctx context.Context, scanID, endpointID string, opt EndpointInventoryOptions) (EndpointInventoryEntry, error)
 }
 
 // CreateEvidenceInput is stored with a finding.

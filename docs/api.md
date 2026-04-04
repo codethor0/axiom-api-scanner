@@ -176,6 +176,14 @@ Invalid `include_summary` or `declares_security` values return **`400`** `invali
 
 **Limitations:** There is no total-count field; clients page with `has_more` / `next_cursor` only. Very large imports still require multiple requests to walk the full inventory.
 
+### GET /v1/scans/{scanID}/endpoints/{endpointID}
+
+Returns **`200`** with one **endpoint detail** object for an imported `scan_endpoints` row belonging to the scan. **`404`** when the scan or endpoint id is missing or the endpoint does not belong to the scan.
+
+**Shape:** All **endpoint read** fields (same as **`items[]`** in the list) with **`summary` always present** (grounded counts: baseline executions, mutation executions, findings for this `scan_endpoint_id`; same SQL semantics as list `include_summary=true`). Plus **`drilldown`**: `scan_endpoint_id` (same UUID as `id`) for use as the `scan_endpoint_id` query parameter on **`GET .../executions`** and **`GET .../findings`**.
+
+The response does **not** embed execution or finding rows; use list routes with that filter (and per-row GETs for full HTTP or `evidence_summary`) to inspect related data.
+
 ### POST /v1/scans/{scanID}/executions/baseline
 
 Runs one sequential baseline pass: GET and JSON POST operations only, against `base_url`, using imported path templates with placeholder substitution. Persists `execution_records` and updates baseline counters on the scan. Response `200` with:
@@ -252,7 +260,7 @@ Rows are produced only after a mutation pass when matchers pass with complete di
 
 **Non-overlapping semantics:** `severity` is impact; `assessment_tier` is post-run confidence in the signal; `rule_declared_confidence` is YAML authoring quality.
 
-Optional **filter** query parameters (all exact match, ANDed with pagination): `assessment_tier` (**`confirmed`**, **`tentative`**, or **`incomplete`**), **`severity`** (**`info`**, **`low`**, **`medium`**, **`high`**, **`critical`**), **`rule_declared_confidence`** (**`high`**, **`medium`**, **`low`**), **`rule_id`**. Invalid enum-like values return `400` `invalid_filter` (unknown strings are not silently ignored).
+Optional **filter** query parameters (all exact match, ANDed with pagination): `assessment_tier` (**`confirmed`**, **`tentative`**, or **`incomplete`**), **`severity`** (**`info`**, **`low`**, **`medium`**, **`high`**, **`critical`**), **`rule_declared_confidence`** (**`high`**, **`medium`**, **`low`**), **`rule_id`**, **`scan_endpoint_id`** (UUID of an imported endpoint row; limits findings to that operation). Invalid enum-like values or a bad UUID for **`scan_endpoint_id`** return `400` `invalid_filter`.
 
 **List vs detail:** **`GET /v1/findings/{findingID}`** returns **`FindingRead`**: all persisted columns including optional **`evidence_summary`** plus **`evidence_inspection`**.
 

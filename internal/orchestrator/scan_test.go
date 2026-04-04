@@ -44,6 +44,9 @@ func (o *onlyGetScanStore) ListScanEndpointsForRunStatus(context.Context, string
 func (o *onlyGetScanStore) ListEndpointInventoryPage(context.Context, string, storage.EndpointListFilter, storage.EndpointInventoryOptions, storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
 	panic("ListEndpointInventoryPage")
 }
+func (o *onlyGetScanStore) GetEndpointInventory(context.Context, string, string, storage.EndpointInventoryOptions) (storage.EndpointInventoryEntry, error) {
+	panic("GetEndpointInventory")
+}
 
 func TestService_Run_nilReceiver(t *testing.T) {
 	var s *Service

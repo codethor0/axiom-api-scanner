@@ -93,6 +93,7 @@ func parseFindingListFilters(r *http.Request) (storage.FindingListFilter, *apiRe
 		Severity:               strings.TrimSpace(q.Get("severity")),
 		RuleDeclaredConfidence: strings.TrimSpace(q.Get("rule_declared_confidence")),
 		RuleID:                 strings.TrimSpace(q.Get("rule_id")),
+		ScanEndpointID:         strings.TrimSpace(q.Get("scan_endpoint_id")),
 	}
 	if f.AssessmentTier != "" {
 		switch f.AssessmentTier {
@@ -113,6 +114,11 @@ func parseFindingListFilters(r *http.Request) (storage.FindingListFilter, *apiRe
 		case "high", "medium", "low":
 		default:
 			return storage.FindingListFilter{}, &apiRequestError{code: "invalid_filter", message: "rule_declared_confidence must be high, medium, or low"}
+		}
+	}
+	if f.ScanEndpointID != "" {
+		if _, err := uuid.Parse(f.ScanEndpointID); err != nil {
+			return storage.FindingListFilter{}, &apiRequestError{code: "invalid_filter", message: "scan_endpoint_id must be a UUID"}
 		}
 	}
 	return f, nil

@@ -62,6 +62,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/v1/scans/{scanID}/control", h.controlScan)
 	r.Post("/v1/scans/{scanID}/specs/openapi", h.importOpenAPIScan)
 	r.Get("/v1/scans/{scanID}/endpoints", h.listScanEndpoints)
+	r.Get("/v1/scans/{scanID}/endpoints/{endpointID}", h.getScanEndpoint)
 	r.Post("/v1/scans/{scanID}/executions/baseline", h.runBaseline)
 	r.Post("/v1/scans/{scanID}/executions/mutations", h.runMutations)
 	r.Get("/v1/scans/{scanID}/executions", h.listExecutions)
@@ -295,6 +296,41 @@ func (h *Handler) listScanEndpoints(w http.ResponseWriter, r *http.Request) {
 		out.Items = append(out.Items, endpointReadFromInventory(ent, listFilter.includeSummary))
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) getScanEndpoint(w http.ResponseWriter, r *http.Request) {
+	if h.Endpoints == nil || h.Scans == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "persistence is not configured")
+		return
+	}
+	scanID, err := parseUUIDParam(chi.URLParam(r, "scanID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_scan_id", "scan id must be a UUID")
+		return
+	}
+	endpointID, err := parseUUIDParam(chi.URLParam(r, "endpointID"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_endpoint_id", "endpoint id must be a UUID")
+		return
+	}
+	if _, gerr := h.Scans.GetScan(r.Context(), scanID); gerr != nil {
+		if errors.Is(gerr, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "scan not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
+		return
+	}
+	ent, err := h.Endpoints.GetEndpointInventory(r.Context(), scanID, endpointID, storage.EndpointInventoryOptions{IncludeSummary: true})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "endpoint not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load endpoint")
+		return
+	}
+	writeJSON(w, http.StatusOK, endpointDetailFromInventory(ent))
 }
 
 func (h *Handler) runBaseline(w http.ResponseWriter, r *http.Request) {

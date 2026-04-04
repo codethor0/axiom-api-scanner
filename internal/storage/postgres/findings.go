@@ -45,6 +45,11 @@ func (s *Store) ListByScanID(ctx context.Context, scanID string, filter storage.
 	if t := strings.TrimSpace(filter.RuleID); t != "" {
 		q += fmt.Sprintf(" AND rule_id = $%d", n)
 		args = append(args, t)
+		n++
+	}
+	if t := strings.TrimSpace(filter.ScanEndpointID); t != "" {
+		q += fmt.Sprintf(" AND scan_endpoint_id = $%d::uuid", n)
+		args = append(args, t)
 	}
 	q += " ORDER BY created_at ASC, id ASC"
 	rows, err := s.pool.Query(ctx, q, args...)
@@ -142,6 +147,11 @@ func (s *Store) ListFindingsPage(ctx context.Context, scanID string, filter stor
 	}
 	if t := strings.TrimSpace(filter.RuleID); t != "" {
 		q += fmt.Sprintf(" AND rule_id = $%d", n)
+		args = append(args, t)
+		n++
+	}
+	if t := strings.TrimSpace(filter.ScanEndpointID); t != "" {
+		q += fmt.Sprintf(" AND scan_endpoint_id = $%d::uuid", n)
 		args = append(args, t)
 		n++
 	}
