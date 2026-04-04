@@ -19,6 +19,19 @@ func executionDetailPath(scanID, executionID string) string {
 	return fmt.Sprintf("/v1/scans/%s/executions/%s", scanID, executionID)
 }
 
+func scanRunStatusPath(scanID string) string {
+	return fmt.Sprintf("/v1/scans/%s/run/status", scanID)
+}
+
+// NewScanListNavigation returns path hints for findings and executions list envelopes (same scan_id as the request path).
+func NewScanListNavigation(scanID string) ScanListNavigation {
+	return ScanListNavigation{
+		FindingsListPath:   findingsListPath(scanID),
+		ExecutionsListPath: executionsListPath(scanID),
+		RunStatusPath:      scanRunStatusPath(scanID),
+	}
+}
+
 // Path-only (no scheme/host) prefixes for scan-scoped list routes. Values are grounded from scan_id.
 func scanRunDrilldownHints(scanID string) ScanRunDrilldownHints {
 	return ScanRunDrilldownHints{
@@ -27,7 +40,7 @@ func scanRunDrilldownHints(scanID string) ScanRunDrilldownHints {
 		EndpointsInventoryPath: fmt.Sprintf("/v1/scans/%s/endpoints", scanID),
 		ExecutionsListPath:     executionsListPath(scanID),
 		FindingsListPath:       findingsListPath(scanID),
-		RunStatusPath:          fmt.Sprintf("/v1/scans/%s/run/status", scanID),
+		RunStatusPath:          scanRunStatusPath(scanID),
 	}
 }
 
@@ -41,6 +54,6 @@ func endpointDrilldownHints(scanID, scanEndpointID string, executionsQuery, find
 		FindingsListPath:       findingsListPath(scanID),
 		ExecutionsListQuery:    executionsQuery,
 		FindingsListQuery:      findingsQuery,
-		RunStatusPath:          fmt.Sprintf("/v1/scans/%s/run/status", scanID),
+		RunStatusPath:          scanRunStatusPath(scanID),
 	}
 }

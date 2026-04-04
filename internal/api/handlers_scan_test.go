@@ -857,6 +857,9 @@ func TestListExecutions_returnsExecutionListEnvelope(t *testing.T) {
 	if env.Items == nil {
 		t.Fatal("want non-nil items slice")
 	}
+	if env.ScanNavigation != NewScanListNavigation(scan.ID) {
+		t.Fatalf("scan_navigation %+v", env.ScanNavigation)
+	}
 }
 
 func TestCreateScan_fullModeRequiresOptIn(t *testing.T) {

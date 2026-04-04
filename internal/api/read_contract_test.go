@@ -440,10 +440,17 @@ func TestContract_executionList_wireKeys(t *testing.T) {
 	if jerr := json.Unmarshal(body, &env); jerr != nil {
 		t.Fatal(jerr)
 	}
-	for _, k := range []string{"items", "meta"} {
+	for _, k := range []string{"items", "meta", "scan_navigation"} {
 		if _, ok := env[k]; !ok {
 			t.Fatalf("missing %q in execution list", k)
 		}
+	}
+	var scanNav ScanListNavigation
+	if err := json.Unmarshal(env["scan_navigation"], &scanNav); err != nil {
+		t.Fatal(err)
+	}
+	if scanNav != NewScanListNavigation(scan.ID) {
+		t.Fatalf("scan_navigation %+v want %+v", scanNav, NewScanListNavigation(scan.ID))
 	}
 	var items []json.RawMessage
 	if err := json.Unmarshal(env["items"], &items); err != nil {

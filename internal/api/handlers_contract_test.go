@@ -111,6 +111,9 @@ func TestAPI_listExecutions_empty(t *testing.T) {
 	if body.Meta.Limit != 50 || body.Meta.Sort != "created_at" || body.Meta.Order != "asc" {
 		t.Fatalf("meta %+v", body.Meta)
 	}
+	if body.ScanNavigation != NewScanListNavigation(scan.ID) {
+		t.Fatalf("scan_navigation %+v", body.ScanNavigation)
+	}
 }
 
 func TestAPI_getExecution_invalidPathUUIDs(t *testing.T) {

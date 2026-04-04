@@ -388,6 +388,11 @@ func assertFindingsListWire(t *testing.T, body []byte, wantItems int) {
 	if env.Meta.Limit == 0 || env.Meta.Sort == "" || env.Meta.Order == "" {
 		t.Fatalf("meta %+v", env.Meta)
 	}
+	if wantItems > 0 {
+		if env.ScanNavigation != NewScanListNavigation(env.Items[0].ScanID) {
+			t.Fatalf("scan_navigation %+v want %+v", env.ScanNavigation, NewScanListNavigation(env.Items[0].ScanID))
+		}
+	}
 	raw := env.Items[0]
 	b, err := json.Marshal(raw)
 	if err != nil {
@@ -424,6 +429,11 @@ func assertExecutionsListWire(t *testing.T, body []byte, wantItems int) {
 	}
 	if len(env.Items) != wantItems {
 		t.Fatalf("items %d want %d", len(env.Items), wantItems)
+	}
+	if wantItems > 0 {
+		if env.ScanNavigation != NewScanListNavigation(env.Items[0].ScanID) {
+			t.Fatalf("scan_navigation %+v want %+v", env.ScanNavigation, NewScanListNavigation(env.Items[0].ScanID))
+		}
 	}
 	b, err := json.Marshal(env.Items[0])
 	if err != nil {

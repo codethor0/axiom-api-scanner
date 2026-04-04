@@ -248,7 +248,7 @@ If baseline is missing or not `succeeded`, `result.status` is `failed` with `bas
 
 ### GET /v1/scans/{scanID}/executions
 
-Lists stored HTTP exchanges for the scan. **Response shape:** JSON object with **`items`** (array of **execution list** rows) and **`meta`** (pagination). **`GET .../executions/{executionID}`** returns the full **execution read** (includes redacted `request` / `response` bodies and header maps); list rows intentionally omit those objects so operators can page large runs without shipping duplicate body payload.
+Lists stored HTTP exchanges for the scan. **Response shape:** JSON object with **`items`** (array of **execution list** rows), **`meta`** (pagination), and **`scan_navigation`** (path-only **`findings_list_path`**, **`executions_list_path`**, **`run_status_path`** for this scan—same strings as **`GET .../run/status`** **`drilldown`** for those three routes). Use **`scan_navigation`** to switch between findings and executions list pages (and run status) while comparing baseline vs mutated rows or triaging findings. **`GET .../executions/{executionID}`** returns the full **execution read** (includes redacted `request` / `response` bodies and header maps); list rows intentionally omit those objects so operators can page large runs without shipping duplicate body payload.
 
 **Execution list row** fields:
 
@@ -289,7 +289,7 @@ Returns one **execution read** object (full redacted `request` / `response` plus
 
 ### GET /v1/scans/{scanID}/findings
 
-Lists findings for the scan. **Response shape:** object with **`items`** (**finding list** rows) and **`meta`** (same pagination fields as executions).
+Lists findings for the scan. **Response shape:** object with **`items`** (**finding list** rows), **`meta`** (same pagination fields as executions), and **`scan_navigation`** (same path object as on the executions list—**`findings_list_path`**, **`executions_list_path`**, **`run_status_path`** for the request scan id).
 
 Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each **finding list** row mirrors **`FindingRead` field order** for shared keys (without **`evidence_summary`**): **`id`**, **`scan_id`**, **`rule_id`**, **`category`**, **`severity`**, **`rule_declared_confidence`**, **`assessment_tier`**, **`summary`**, **`evidence_uri`**, optional **`scan_endpoint_id`**, optional merged **`baseline_execution_id` / `mutated_execution_id`**, **`created_at`**, **`finding_detail_path`** (path-only **`GET /v1/findings/{id}`** — finding detail is not nested under **`/scans/{scan_id}`** on the wire), optional **`comparison_hint`** (read-model text when the row has list **`evidence_inspection`** counts or both execution ids—points operators at detail for **`matcher_outcomes`**, legend, **`evidence_comparison_guide`**, and raw **`evidence_summary`**), and optional compact **`evidence_inspection`** (`diff_point_count`, **`matcher_passed`**, **`matcher_failed`**, **`matcher_total`** = passed+failed when matchers exist—no **`matcher_outcomes`** array). Execution linkage is **only** on the list row; the list inspection object does not repeat those IDs. The list does **not** include raw **`evidence_summary`** (use **`GET /v1/findings/{findingID}`** or **`finding_detail_path`** for the full read model and per-matcher rows).
 

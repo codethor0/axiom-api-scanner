@@ -341,14 +341,24 @@ type ListPageMeta struct {
 	HasMore    bool   `json:"has_more"`
 }
 
+// ScanListNavigation is path-only routes for the scan that owns a findings or executions list response (no host).
+// Same path strings as run-status drilldown for these three resources; use to jump between list pages when comparing findings and executions.
+type ScanListNavigation struct {
+	FindingsListPath   string `json:"findings_list_path"`
+	ExecutionsListPath string `json:"executions_list_path"`
+	RunStatusPath      string `json:"run_status_path"`
+}
+
 // ExecutionListResponse is the wire envelope for GET /v1/scans/{scanID}/executions.
 type ExecutionListResponse struct {
-	Items []ExecutionListItem `json:"items"`
-	Meta  ListPageMeta        `json:"meta"`
+	Items          []ExecutionListItem `json:"items"`
+	Meta           ListPageMeta        `json:"meta"`
+	ScanNavigation ScanListNavigation  `json:"scan_navigation"`
 }
 
 // FindingListResponse is the wire envelope for GET /v1/scans/{scanID}/findings.
 type FindingListResponse struct {
-	Items []FindingListItem `json:"items"`
-	Meta  ListPageMeta      `json:"meta"`
+	Items          []FindingListItem  `json:"items"`
+	Meta           ListPageMeta       `json:"meta"`
+	ScanNavigation ScanListNavigation `json:"scan_navigation"`
 }

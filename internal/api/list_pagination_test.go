@@ -51,6 +51,9 @@ func TestListExecutions_keysetPagination(t *testing.T) {
 	if len(p1.Items) != 2 || !p1.Meta.HasMore || p1.Meta.NextCursor == "" {
 		t.Fatalf("page1 %+v", p1.Meta)
 	}
+	if p1.ScanNavigation != NewScanListNavigation(scan.ID) {
+		t.Fatalf("scan_navigation %+v", p1.ScanNavigation)
+	}
 
 	resp2, err := http.Get(base + "&cursor=" + p1.Meta.NextCursor)
 	if err != nil {
@@ -67,6 +70,9 @@ func TestListExecutions_keysetPagination(t *testing.T) {
 	}
 	if len(p2.Items) != 2 {
 		t.Fatalf("page2 items %d", len(p2.Items))
+	}
+	if p2.ScanNavigation != NewScanListNavigation(scan.ID) {
+		t.Fatalf("page2 scan_navigation %+v", p2.ScanNavigation)
 	}
 	if p1.Items[1].ID == p2.Items[0].ID {
 		t.Fatal("overlap across pages")
@@ -167,6 +173,9 @@ func TestListFindings_severitySortAndPaginationMeta(t *testing.T) {
 	}
 	if env.Meta.Sort != "severity" || env.Meta.Order != "asc" || env.Meta.Limit != 10 {
 		t.Fatalf("meta %+v", env.Meta)
+	}
+	if env.ScanNavigation != NewScanListNavigation(scan.ID) {
+		t.Fatalf("scan_navigation %+v", env.ScanNavigation)
 	}
 }
 

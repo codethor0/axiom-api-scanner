@@ -459,6 +459,7 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 			NextCursor: page.NextCursor,
 			HasMore:    page.HasMore,
 		},
+		ScanNavigation: NewScanListNavigation(id),
 	})
 }
 
@@ -597,6 +598,7 @@ func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
 			NextCursor: page.NextCursor,
 			HasMore:    page.HasMore,
 		},
+		ScanNavigation: NewScanListNavigation(id),
 	})
 }
 
