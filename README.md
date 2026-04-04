@@ -2,7 +2,20 @@
 
 Axiom is a safe-by-default, **evidence-first**, **low-blast-radius** API abuse scanner for **OpenAPI-first** workflows and **authorized** testing. It focuses on a **bounded V1** set of families (IDOR path/query swap, mass assignment privilege injection, path normalization bypass, rate limit header rotation)—not generic “scan everything” DAST. Details: [docs/comparison.md](docs/comparison.md).
 
-**Release candidate:** **`v0.1.0-rc.1`** is documented in [CHANGELOG.md](CHANGELOG.md). Positioning versus broader tools is in [docs/comparison.md](docs/comparison.md). **License:** [LICENSE](LICENSE) (MIT).
+**Release candidate:** **`v0.1.0-rc.1`** is **published** on GitHub ([release](https://github.com/codethor0/axiom-api-scanner/releases/tag/v0.1.0-rc.1), [CHANGELOG](CHANGELOG.md)). Launch copy and FAQs: [docs/announcement.md](docs/announcement.md), [docs/faq.md](docs/faq.md). **License:** [LICENSE](LICENSE) (MIT).
+
+## First evaluation (about 5–10 minutes)
+
+Pick **one** path; do not assume CI already ran Docker for you.
+
+| Goal | Command | You need |
+| --- | --- | --- |
+| Fast sanity (no Docker) | `make ci-unit` | Go; from repo root |
+| Full scan lifecycle on **fixtures** | `make e2e-local` | Docker, `curl`, `jq`, free ports **54334**, **18080**, **8080** (defaults) |
+| V1 **benchmark matrix** on **fixtures** | `make benchmark-findings-local` | Same + port **18081**; run **after** e2e or use `make release-candidate-proof` |
+| Everything local (sequential Docker) | `make release-candidate-proof` | Docker, `curl`, `jq`, Go |
+
+**Read next:** what green means in each layer — [docs/testing.md](docs/testing.md#evaluator-quick-path-first-10-minutes) and the **Proof matrix**. **Demo outline:** [docs/demo-script.md](docs/demo-script.md).
 
 ## What Axiom is
 
@@ -75,6 +88,8 @@ curl -s -X POST "localhost:8080/v1/scans/{scan_id}/specs/openapi" \
 
 ## Reproducible proof (evaluators and release candidates)
 
+**Important:** **CI** proves **`go test`**, **vet**, **lint**, migration layout, and shell **syntax** of proof scripts. It does **not** run **`make e2e-local`** or **`make benchmark-findings-local`**. For the full local story, use the [Proof matrix](docs/testing.md#proof-matrix-ci-vs-local-vs-environment).
+
 **CI** (on GitHub): migration layout, `bash -n` on local proof scripts, `go vet`, `golangci-lint`, `go test ./...` with Postgres. Details: [docs/testing.md](docs/testing.md#ci-vs-local).
 
 **Local Docker** (requires **Docker**, **curl**, **jq**, free default ports **54334**, **18080**, **18081**, **8080** unless you override env vars documented in [docs/testing.md](docs/testing.md)):
@@ -104,12 +119,12 @@ make release-candidate-proof
 
 **Finding read** (detail JSON, richer than list rows): [docs/api.md](docs/api.md#get-v1findingsfindingid). **Benchmark matrix:** expected rows per family: [docs/benchmark-results.md](docs/benchmark-results.md).
 
-### Release checklist (maintainers, before `v0.1.0-rc.1` tag)
+### Release checklist (maintainers, future tags after `v0.1.0-rc.1`)
 
 1. `main` matches the intended commit; **`make release-candidate-proof`** green on that commit from a clean tree.
 2. Optionally: `export AXIOM_TEST_DATABASE_URL=...` and `go test ./internal/storage/postgres/... -count=1 -v` (integration tests).
-3. `CHANGELOG.md` **0.1.0-rc.1** section accurate; GitHub Release text can copy from it.
-4. Tag `v0.1.0-rc.1` and publish Release (no push in this repo until explicitly requested).
+3. `CHANGELOG.md` section for the new version; GitHub Release text aligned with it.
+4. Annotated tag + publish Release when review is complete (**`v0.1.0-rc.1`** is already [published](https://github.com/codethor0/axiom-api-scanner/releases/tag/v0.1.0-rc.1)).
 
 ## Continuous integration
 
@@ -120,6 +135,9 @@ Push and pull requests on `main` run GitHub Actions per [.github/workflows/ci.ym
 | Document | Purpose |
 | --- | --- |
 | [docs/comparison.md](docs/comparison.md) | Positioning vs broader tools; V1 families; proof expectations |
+| [docs/announcement.md](docs/announcement.md) | RC launch copy; link to published release |
+| [docs/demo-script.md](docs/demo-script.md) | Demo or video outline for evaluators |
+| [docs/faq.md](docs/faq.md) | Scope, CI vs local proof, feedback pointers |
 | [docs/benchmark-results.md](docs/benchmark-results.md) | Reproducible local benchmark; expected outcomes per V1 family |
 | [CHANGELOG.md](CHANGELOG.md) | Release candidate and version notes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute and report issues |

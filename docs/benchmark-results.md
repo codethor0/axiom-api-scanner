@@ -2,6 +2,16 @@
 
 This document records **what the local benchmark proves** for the **current** safe V1 surface. It is **not** a head-to-head run against ZAP, Burp, StackHawk, or 42Crunch (those require separate methodology and permissions). For **category positioning**, see [comparison.md](comparison.md).
 
+## Three layers of proof (read this first)
+
+| Layer | Where it runs | Role |
+| --- | --- | --- |
+| **CI** | GitHub Actions | `go test`, vet, lint, migrations, `bash -n` on scripts — **does not** execute this benchmark or Docker e2e |
+| **Local e2e** | `make e2e-local` | Scan lifecycle on **httpbin** fixtures; proves API + compose wiring |
+| **Local benchmark** | `make benchmark-findings-local` | This document: **tier** + **`bench_summary`** matrix across the **four V1 families** on controlled fixtures |
+
+Full table: [testing.md](testing.md#proof-matrix-ci-vs-local-vs-environment). One command for e2e **then** benchmark: `make release-candidate-proof`.
+
 ## Category
 
 **Evidence-first, low-blast-radius API abuse checks** for **OpenAPI-first** workflows: built-in coverage is expressed in terms of these **V1 families** (aligned with **`rule_family_coverage`** in the API):

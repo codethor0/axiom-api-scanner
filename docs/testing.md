@@ -1,14 +1,23 @@
 # Testing
 
+## Evaluator quick path (first 10 minutes)
+
+1. **Skim positioning:** [comparison.md](comparison.md) — what Axiom is, the four V1 families, and what it does **not** claim.
+2. **Pick a proof path:**
+   - **No Docker:** `make ci-unit` from repo root (same spirit as CI’s compile/test gate; Postgres integration tests **skip** unless `AXIOM_TEST_DATABASE_URL` is set).
+   - **Docker fixtures:** `make e2e-local` then, when that finishes, `make benchmark-findings-local` — or run **`make release-candidate-proof`** once to run both **in order** (avoids port **8080** fights).
+3. **Interpret green:** use the **Proof matrix** below — **GitHub Actions does not substitute** for local Docker; it complements it.
+4. **Optional read:** [benchmark-results.md](benchmark-results.md) for expected `bench_summary` rows; [faq.md](faq.md) for CI vs local and common pitfalls.
+
 ## Release candidate proof
 
-For a **single local recipe** before tagging a release candidate (migration layout, `go vet`, `golangci-lint`, full `go test`, then Docker **`e2e-local`** and **`benchmark-findings-local`**):
+For a **single local recipe** that mirrors a maintainer sign-off (`check-migrations`, `go vet`, `golangci-lint`, full `go test`, then Docker **`e2e-local`** **then** **`benchmark-findings-local`** in sequence):
 
 ```text
 make release-candidate-proof
 ```
 
-**Requirements:** Docker, `curl`, `jq`, Go; run from repository root. Default compose ports are **54334**, **18080**, **18081**, **8080** (see **Local Docker prerequisite summary** below). To exercise **PostgreSQL integration tests** inside `go test`, export **`AXIOM_TEST_DATABASE_URL`** to a dedicated database before running the Makefile target (otherwise those tests are skipped when the variable is unset).
+**What it is not:** a replacement for GitHub Actions (runs on your machine); **is:** the full **local** proof stack in one command. **Requirements:** Docker, `curl`, `jq`, Go; run from repository root. Default compose ports are **54334**, **18080**, **18081**, **8080** (see **Local Docker prerequisite summary** below). To exercise **PostgreSQL integration tests** inside `go test`, export **`AXIOM_TEST_DATABASE_URL`** to a dedicated database before running the Makefile target (otherwise those tests are skipped when the variable is unset).
 
 Release notes template: [CHANGELOG.md](../CHANGELOG.md). Positioning: [comparison.md](comparison.md). Expected benchmark outcomes (Axiom-only): [benchmark-results.md](benchmark-results.md).
 

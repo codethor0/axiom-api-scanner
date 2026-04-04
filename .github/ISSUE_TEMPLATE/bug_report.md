@@ -5,6 +5,14 @@ title: '[bug] '
 labels: ''
 ---
 
+## Feedback type (check any that apply)
+
+- [ ] False positive (finding looks wrong or unhelpfully noisy)
+- [ ] False negative (expected abuse signal not surfaced)
+- [ ] Setup friction (install, Docker, ports, docs)
+- [ ] Auth or credential / header coverage gap
+- [ ] Other incorrect behavior
+
 ## Environment
 
 - Axiom commit or tag:

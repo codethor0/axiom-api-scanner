@@ -41,8 +41,10 @@ Full **release-candidate** recipe: `make release-candidate-proof` (see [docs/tes
 ## Reporting issues
 
 - Use GitHub Issues on [codethor0/axiom-api-scanner](https://github.com/codethor0/axiom-api-scanner).
-- Include: Go version, OS, `go.mod` version, repro steps, expected vs actual behavior, and whether you ran **`make ci-unit`** / **`make e2e-local`** when relevant.
+- **Especially useful for RC traction:** **false positives** (noisy or misleading findings), **false negatives** (missed abuse class you expected), **setup friction** (install, Docker, ports, docs gaps), and **auth or OpenAPI input coverage** you need but do not see documented.
+- Include: Go version, OS, commit or tag (`v0.1.0-rc.1` if applicable), repro steps, expected vs actual behavior, and whether you ran **`make ci-unit`**, **`make e2e-local`**, or **`make benchmark-findings-local`** when relevant.
 - **Security-sensitive** reports: see [SECURITY.md](SECURITY.md).
+- **Context:** [docs/faq.md](docs/faq.md), [docs/announcement.md](docs/announcement.md).
 
 ## Pull requests
 

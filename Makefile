@@ -1,7 +1,17 @@
-.PHONY: build test fmt vet lint check-migrations workflow-lint ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth benchmark-findings-local release-candidate-proof
+.PHONY: build test fmt vet lint check-migrations workflow-lint ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth benchmark-findings-local release-candidate-proof help
 
 # CLI migrate must match github.com/golang-migrate/migrate/v4 used by internal/dbmigrate.
 MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
+
+help:
+	@echo "Axiom Makefile (run from repo root). See docs/testing.md and README.md."
+	@echo "  make help                      Show this list."
+	@echo "  make ci-unit                   check-migrations + vet + lint + go test (postgres tests skip if AXIOM_TEST_DATABASE_URL unset)."
+	@echo "  make ci                        Like CI workflow: requires AXIOM_TEST_DATABASE_URL for go test."
+	@echo "  make e2e-local                 Docker e2e (httpbin); needs Docker, curl, jq."
+	@echo "  make benchmark-findings-local  Docker benchmark + bench_summary; run after e2e or alone on free :8080."
+	@echo "  make release-candidate-proof   check-migrations + vet + lint + go test + e2e-local + benchmark-findings-local (sequential)."
+	@echo "  make build / run-api           API binary; run-api needs DATABASE_URL."
 
 build:
 	go build -o bin/axiom-api ./cmd/api
@@ -66,10 +76,10 @@ benchmark-findings-local:
 	chmod +x ./scripts/benchmark_findings_local.sh
 	./scripts/benchmark_findings_local.sh
 
-# Local release-candidate proof: static checks + unit tests + Docker e2e + benchmark.
+# Full local proof stack (maintainers / evaluators): migrations + vet + lint + go test, then Docker e2e, then benchmark (order matters for port 8080).
 # Requires: Docker, curl, jq, Go. Postgres integration in go test is optional unless AXIOM_TEST_DATABASE_URL is set (see docs/testing.md).
 release-candidate-proof: check-migrations vet lint
-	@echo "release-candidate-proof: go test (set AXIOM_TEST_DATABASE_URL for postgres integration tests)"
+	@echo "release-candidate-proof: go test (set AXIOM_TEST_DATABASE_URL for postgres integration tests); then e2e-local; then benchmark-findings-local"
 	AXIOM_TEST_MIGRATIONS_DIR="$(CURDIR)/migrations" go test ./... -count=1
 	$(MAKE) e2e-local
 	$(MAKE) benchmark-findings-local

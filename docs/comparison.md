@@ -57,3 +57,9 @@ Axiom **does not** claim parity with those scopes. It targets the **narrow wedge
 ## Change policy
 
 When families or inputs expand, update this file in the **same change** so positioning stays honest.
+
+## Feedback and traction
+
+- **RC launch copy:** [announcement.md](announcement.md) (includes the published release URL).
+- **Common questions:** [faq.md](faq.md).
+- **Issues:** [CONTRIBUTING.md](../CONTRIBUTING.md) — false positives, false negatives, setup friction, and auth/spec gaps are especially useful.

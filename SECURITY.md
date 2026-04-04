@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the **latest commit on `main`** is actively maintained for public development. Release tags will be documented in [CHANGELOG.md](CHANGELOG.md) once published.
+Only the **latest commit on `main`** is actively maintained for public development. Published tags are listed in [CHANGELOG.md](CHANGELOG.md) (e.g. **`v0.1.0-rc.1`**). General scope questions: [docs/faq.md](docs/faq.md).
 
 ## Reporting a vulnerability
 
