@@ -4,7 +4,7 @@
 
 - Go version per repository `go.mod` directive (currently 1.25+)
 - PostgreSQL 14+ with the `pgcrypto` extension available (used for `gen_random_uuid()`)
-- Optional: `golangci-lint` for local lint parity with CI
+- `golangci-lint` (v2.x, compatible with [.golangci.yml](../.golangci.yml)) for the same lint gate as CI
 
 ## Environment variables
 
@@ -85,28 +85,31 @@ rules                      YAML rule packs
 
 ## Testing
 
-Unit and handler tests (no database):
+**CI parity (recommended before a PR):** from the repository root, with a dedicated Postgres database URL:
+
+```text
+export AXIOM_TEST_DATABASE_URL='postgres://user:pass@localhost:5432/axiom_test?sslmode=disable'
+make ci
+```
+
+That runs `./scripts/check_migrations.sh`, `go vet ./...`, `golangci-lint run`, and `go test ./... -count=1` with `AXIOM_TEST_MIGRATIONS_DIR` set to the repo `migrations/` folder (same ordering as `.github/workflows/ci.yml`).
+
+**Without Postgres:** `make ci-unit` runs the same gates except it does not require `AXIOM_TEST_DATABASE_URL`; postgres integration tests skip.
+
+**Ad hoc unit tests:**
 
 ```text
 make test
 ```
 
-PostgreSQL integration tests (`internal/storage/postgres`, see [testing.md](testing.md)) require a reachable server. If you use the Docker flow from [testing.md](testing.md), the Docker daemon must be running before `docker run`.
+**PostgreSQL integration only** (`internal/storage/postgres`, see [testing.md](testing.md)):
 
 ```text
 export AXIOM_TEST_DATABASE_URL='postgres://user:pass@localhost:5432/axiom_test?sslmode=disable'
-# Optional if not running from repo root:
-export AXIOM_TEST_MIGRATIONS_DIR=/absolute/path/to/migrations
-go test ./internal/storage/postgres/... -count=1 -v
-```
-
-Or, when wired in the Makefile:
-
-```text
 make test-integration
 ```
 
-When `AXIOM_TEST_DATABASE_URL` is unset, postgres integration tests are skipped.
+When `AXIOM_TEST_DATABASE_URL` is unset, `go test ./...` skips those tests; `make ci` fails fast if the variable is unset so local runs match the Actions job.
 
 ## Local end-to-end validation (Docker)
 

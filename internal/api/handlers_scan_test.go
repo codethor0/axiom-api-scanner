@@ -566,10 +566,10 @@ func TestScanRunStatus_coverageHintsDeclaredSecurity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{
+	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{
 		{Method: "GET", Path: "/r/{id}", SecuritySchemeHints: []string{"bearerAuth"}},
-	}); err != nil {
-		t.Fatal(err)
+	}); rerr != nil {
+		t.Fatal(rerr)
 	}
 
 	srv := httptest.NewServer(testHandler(mem).Routes())

@@ -97,7 +97,7 @@ func (h *Handler) scanRunControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ScanRunControlRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+	if decErr := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); decErr != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
 		return
 	}

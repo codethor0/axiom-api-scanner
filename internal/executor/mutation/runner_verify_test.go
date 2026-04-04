@@ -380,8 +380,8 @@ func TestRunner_secondPassReusesMutationAndFinding(t *testing.T) {
 
 	r := NewRunner(st)
 	r.HTTP = srv.Client()
-	if _, err := r.Run(context.Background(), scanID, work); err != nil {
-		t.Fatal(err)
+	if _, runErr := r.Run(context.Background(), scanID, work); runErr != nil {
+		t.Fatal(runErr)
 	}
 	firstCalls := st.createCalls
 	firstFinID := st.lastFinding.ID

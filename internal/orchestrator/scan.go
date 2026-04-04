@@ -53,8 +53,8 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 		return err
 	}
 	if scan.Status == engine.ScanQueued {
-		if _, err := s.Store.ApplyControl(ctx, scanID, storage.ScanControlStart); err != nil && !errors.Is(err, storage.ErrInvalidTransition) {
-			return err
+		if _, aerr := s.Store.ApplyControl(ctx, scanID, storage.ScanControlStart); aerr != nil && !errors.Is(aerr, storage.ErrInvalidTransition) {
+			return aerr
 		}
 		scan, err = s.Store.GetScan(ctx, scanID)
 		if err != nil {
@@ -70,23 +70,23 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 		return nil
 	}
 
-	if err := s.advancePhase(ctx, scanID, engine.PhaseBaselineRunning, opts.ResumeRetry); err != nil {
-		return err
+	if advErr := s.advancePhase(ctx, scanID, engine.PhaseBaselineRunning, opts.ResumeRetry); advErr != nil {
+		return advErr
 	}
-	if canceled, err := scanCanceled(ctx, s.Store, scanID); err != nil {
-		return err
+	if canceled, canErr := scanCanceled(ctx, s.Store, scanID); canErr != nil {
+		return canErr
 	} else if canceled {
 		return s.finishCancel(ctx, scanID)
 	}
-	if err := ctx.Err(); err != nil {
-		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, err.Error())
-		return err
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, ctxErr.Error())
+		return ctxErr
 	}
 
 	bOpts := baseline.RunOptions{Force: opts.ForceRerunBaseline}
-	if _, err := s.Baseline.RunWithOptions(ctx, scanID, bOpts); err != nil {
-		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, err.Error())
-		return err
+	if _, baseErr := s.Baseline.RunWithOptions(ctx, scanID, bOpts); baseErr != nil {
+		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, baseErr.Error())
+		return baseErr
 	}
 
 	scan, err = s.Store.GetScan(ctx, scanID)
@@ -101,20 +101,20 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 		return fail(msg)
 	}
 
-	if err := s.advancePhase(ctx, scanID, engine.PhaseBaselineComplete, opts.ResumeRetry); err != nil {
-		return err
+	if errBC := s.advancePhase(ctx, scanID, engine.PhaseBaselineComplete, opts.ResumeRetry); errBC != nil {
+		return errBC
 	}
-	if err := s.advancePhase(ctx, scanID, engine.PhaseMutationRunning, opts.ResumeRetry); err != nil {
-		return err
+	if errMR := s.advancePhase(ctx, scanID, engine.PhaseMutationRunning, opts.ResumeRetry); errMR != nil {
+		return errMR
 	}
-	if canceled, err := scanCanceled(ctx, s.Store, scanID); err != nil {
-		return err
+	if canceled, canErr2 := scanCanceled(ctx, s.Store, scanID); canErr2 != nil {
+		return canErr2
 	} else if canceled {
 		return s.finishCancel(ctx, scanID)
 	}
-	if err := ctx.Err(); err != nil {
-		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, err.Error())
-		return err
+	if ctxErr2 := ctx.Err(); ctxErr2 != nil {
+		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, ctxErr2.Error())
+		return ctxErr2
 	}
 
 	ruleSet, err := s.loadRules()
@@ -130,24 +130,24 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 		return fail(werr.Error())
 	}
 
-	if _, err := s.Mutations.Run(ctx, scanID, work); err != nil {
-		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, err.Error())
-		return err
+	if _, mutErr := s.Mutations.Run(ctx, scanID, work); mutErr != nil {
+		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, mutErr.Error())
+		return mutErr
 	}
 
 	scan, err = s.Store.GetScan(ctx, scanID)
 	if err != nil {
 		return err
 	}
-	if err := s.advancePhase(ctx, scanID, engine.PhaseMutationComplete, opts.ResumeRetry); err != nil {
-		return err
+	if errMC := s.advancePhase(ctx, scanID, engine.PhaseMutationComplete, opts.ResumeRetry); errMC != nil {
+		return errMC
 	}
-	if err := s.advancePhase(ctx, scanID, engine.PhaseFindingsComplete, opts.ResumeRetry); err != nil {
-		return err
+	if errFC := s.advancePhase(ctx, scanID, engine.PhaseFindingsComplete, opts.ResumeRetry); errFC != nil {
+		return errFC
 	}
 
-	if err := s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanCompleted, engine.PhaseFindingsComplete, ""); err != nil {
-		return err
+	if setErr := s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanCompleted, engine.PhaseFindingsComplete, ""); setErr != nil {
+		return setErr
 	}
 	return nil
 }

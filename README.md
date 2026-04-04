@@ -60,7 +60,9 @@ curl -s -X POST localhost:8080/v1/specs/openapi/import --data-binary @spec.yaml 
 
 After a scan has imported endpoints and a `base_url`, you can run baseline and mutations in one synchronous orchestrated pass with `POST /v1/scans/{scan_id}/run` and body `{"action":"start"}` (details and resume/cancel in [docs/api.md](docs/api.md)).
 
-**Local validation:** with Docker available, `make e2e-local` runs an automated import, baseline, mutation, finding, and orchestration smoke against a local httpbin container. `make e2e-crapi` runs the same class of checks against **[OWASP crAPI](https://github.com/OWASP/crAPI)** in Docker (clone under `.cache/crapi`). `make e2e-crapi-auth` adds an API-only signup/login JWT and re-runs baseline/mutations with `auth_headers`. See [docs/testing.md](docs/testing.md).
+**Continuous integration:** push and pull requests on `main` run GitHub Actions: migration layout checks, `go vet`, `golangci-lint`, and `go test ./...` against a PostgreSQL 16 service (sets `AXIOM_TEST_DATABASE_URL` so `internal/storage/postgres` integration tests run). See [docs/testing.md](docs/testing.md#ci-vs-local).
+
+**Local validation:** with Docker available, `make e2e-local` runs an automated import, baseline, mutation, finding, and orchestration smoke against a local httpbin container. `make e2e-crapi` runs the same class of checks against **[OWASP crAPI](https://github.com/OWASP/crAPI)** in Docker (clone under `.cache/crapi`). `make e2e-crapi-auth` adds an API-only signup/login JWT and re-runs baseline/mutations with `auth_headers`. Those Docker end-to-end flows are **local-only** (not in CI). See [docs/testing.md](docs/testing.md).
 
 ## Documentation
 

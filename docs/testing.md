@@ -1,5 +1,31 @@
 # Testing
 
+## CI vs local
+
+**GitHub Actions** (`.github/workflows/ci.yml`), on `push` and `pull_request` to `main`:
+
+| Step | Purpose |
+| --- | --- |
+| `./scripts/check_migrations.sh` | Every `migrations/*.up.sql` has a matching `.down.sql`, expected `NNNNNN_name.up.sql` / `.down.sql` naming |
+| `go vet ./...` | Standard vet checks |
+| `golangci-lint run` | Linters from [.golangci.yml](../.golangci.yml) (includes `govet` with shadow detection) |
+| `go test ./... -count=1` | Full module tests with `AXIOM_TEST_DATABASE_URL` pointing at a job service container (`postgres:16-alpine`) |
+
+**Not in CI** (heavy, flaky, or third-party stack): `make e2e-local`, `make e2e-crapi`, `make e2e-crapi-auth`, manual targets, or anything requiring cloned OWASP crAPI images beyond this workflow.
+
+**Mirror CI locally:** with Postgres listening and a dedicated database:
+
+```text
+export AXIOM_TEST_DATABASE_URL='postgres://USER:PASS@HOST:PORT/DBNAME?sslmode=disable'
+make ci
+```
+
+**Without Postgres** (integration tests skip inside `go test`):
+
+```text
+make ci-unit
+```
+
 ## Goals
 
 - Prove correctness of parsers, validation, and planning logic.
