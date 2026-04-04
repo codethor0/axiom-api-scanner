@@ -510,6 +510,9 @@ func TestFindingsList_evidenceInspectionCompactCounts(t *testing.T) {
 	if ins == nil || ins.MatcherPassed != 1 || ins.MatcherFailed != 1 || ins.MatcherTotal != 2 || ins.DiffPointCount != 1 {
 		t.Fatalf("ins %+v", ins)
 	}
+	if h := env.Items[0].ComparisonHint; h == "" || !strings.Contains(h, "finding_detail_path") {
+		t.Fatalf("comparison_hint %q", h)
+	}
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(body, &top); err != nil {
 		t.Fatal(err)

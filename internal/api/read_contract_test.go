@@ -25,12 +25,12 @@ var executionReadRequired = []string{
 var executionOperatorGuideKeys = []string{
 	"phase_role", "linkage_narration", "summaries_mirror_redacted_snapshots",
 	"phase_execution_kind_alignment", "summaries_list_detail_parity",
-	"cross_phase_filter_hint",
+	"cross_phase_filter_hint", "phase_summary_compare_hint",
 }
 
 var findingReadTrustLegendKeys = []string{
 	"severity", "rule_declared_confidence", "assessment_tier",
-	"evidence_summary", "evidence_inspection", "operator_assessment",
+	"evidence_summary", "evidence_inspection", "operator_assessment", "finding_list_row",
 }
 
 // executionListItemRequired is GET .../executions items[] (summaries only; no request/response bodies).

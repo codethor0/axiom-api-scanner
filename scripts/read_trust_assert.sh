@@ -11,7 +11,8 @@ assert_read_trust_legend_shape() {
     (.read_trust_legend.assessment_tier | type == "string" and length > 0) and
     (.read_trust_legend.evidence_summary | type == "string" and length > 0) and
     (.read_trust_legend.evidence_inspection | type == "string" and length > 0) and
-    (.read_trust_legend.operator_assessment | type == "string" and length > 0)
+    (.read_trust_legend.operator_assessment | type == "string" and length > 0) and
+    (.read_trust_legend.finding_list_row | type == "string" and length > 0)
   ' >/dev/null
 }
 
@@ -24,7 +25,8 @@ assert_operator_guide_shape() {
     (.operator_guide.summaries_mirror_redacted_snapshots | type == "string" and length > 0) and
     (.operator_guide.phase_execution_kind_alignment | type == "string" and length > 0) and
     (.operator_guide.summaries_list_detail_parity | type == "string" and length > 0) and
-    (.operator_guide.cross_phase_filter_hint | type == "string" and length > 0)
+    (.operator_guide.cross_phase_filter_hint | type == "string" and length > 0) and
+    (.operator_guide.phase_summary_compare_hint | type == "string" and length > 0)
   ' >/dev/null
 }
 

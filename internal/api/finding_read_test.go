@@ -34,6 +34,30 @@ func TestMergedFindingExecutionIDs_prefersRowFallsBackToEvidenceSummary(t *testi
 	}
 }
 
+func TestNewFindingListItem_comparisonHintWhenEvidenceOrPairedExecutions(t *testing.T) {
+	t.Parallel()
+	noEv := findings.Finding{ID: "a", ScanID: "b"}
+	if NewFindingListItem(noEv).ComparisonHint != "" {
+		t.Fatal("expected empty comparison_hint")
+	}
+	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
+		MatcherOutcomes: []findings.MatcherOutcomeSummary{{Index: 0, Kind: "k", Passed: true}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withEv := findings.Finding{ID: "a", ScanID: "b", EvidenceSummary: evSum}
+	if NewFindingListItem(withEv).ComparisonHint == "" {
+		t.Fatal("want comparison_hint when list has evidence_inspection")
+	}
+	paired := findings.Finding{
+		ID: "a", ScanID: "b", BaselineExecutionID: "b1", MutatedExecutionID: "m1",
+	}
+	if NewFindingListItem(paired).ComparisonHint == "" {
+		t.Fatal("want comparison_hint when both execution ids set")
+	}
+}
+
 func TestNewFindingListItem_detailPathMatchesFindingRead(t *testing.T) {
 	t.Parallel()
 	f := findings.Finding{
@@ -121,15 +145,15 @@ func TestNewFindingRead_fillsExecutionIDsFromEvidenceSummary(t *testing.T) {
 
 func TestNewFindingRead_evidenceComparisonGuide_whenPaired(t *testing.T) {
 	f := findings.Finding{
-		ID:                    "fid",
-		ScanID:                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-		RuleID:                "r",
-		Category:              "c",
-		Severity:              findings.SeverityLow,
-		Summary:               "s",
-		EvidenceURI:           "/e",
-		BaselineExecutionID:   "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-		MutatedExecutionID:    "cccccccc-cccc-cccc-cccc-cccccccccccc",
+		ID:                  "fid",
+		ScanID:              "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		RuleID:              "r",
+		Category:            "c",
+		Severity:            findings.SeverityLow,
+		Summary:             "s",
+		EvidenceURI:         "/e",
+		BaselineExecutionID: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+		MutatedExecutionID:  "cccccccc-cccc-cccc-cccc-cccccccccccc",
 	}
 	r := NewFindingRead(f)
 	g := r.EvidenceComparisonGuide
@@ -184,7 +208,7 @@ func TestFindingRead_readTrustLegendWireKeysMatchProofScripts(t *testing.T) {
 	if err := json.Unmarshal(legendRaw, &legend); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"severity", "rule_declared_confidence", "assessment_tier", "evidence_summary", "evidence_inspection", "operator_assessment"} {
+	for _, k := range []string{"severity", "rule_declared_confidence", "assessment_tier", "evidence_summary", "evidence_inspection", "operator_assessment", "finding_list_row"} {
 		if legend[k] == "" {
 			t.Fatalf("empty legend key %q", k)
 		}

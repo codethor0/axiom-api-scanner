@@ -69,6 +69,8 @@ type ExecutionOperatorGuide struct {
 	SummariesListDetailParity   string `json:"summaries_list_detail_parity"`
 	// CrossPhaseFilterHint explains how to list the other phase for the same imported endpoint without a second execution id on this row.
 	CrossPhaseFilterHint string `json:"cross_phase_filter_hint"`
+	// PhaseSummaryCompareHint ties list-row phase semantics to request/response_summary fields for baseline vs mutated comparison (read-path only).
+	PhaseSummaryCompareHint string `json:"phase_summary_compare_hint"`
 }
 
 const executionSummariesMirrorNote = "request_summary and response_summary repeat the same persisted request/response fields (method, shortened URL, header/body counts and lengths, status, content-type); they do not add HTTP material beyond those redacted snapshots."
@@ -78,6 +80,8 @@ const executionPhaseExecutionKindAlignment = "phase and execution_kind are ident
 const executionSummariesListDetailParity = "request_summary and response_summary on this object match the GET .../executions list row for the same execution id (same redaction and derivation)."
 
 const executionCrossPhaseFilterHint = "To pair baseline vs mutated exchanges for the same imported operation, call GET .../executions?scan_endpoint_id=<this row's scan_endpoint_id> (optionally filter phase) and compare baseline rows to mutated rows for that endpoint."
+
+const executionPhaseSummaryCompareHint = "Executions list rows with the same scan_endpoint_id pair baseline (phase baseline, no mutation_rule_id/candidate_key) vs mutated (rule/candidate when set); compare request_summary/response_summary side-by-side for quick deltas, or open each execution_detail_path for full redacted bodies. url_short truncates the stored request URL; header_count and body_byte_length count redacted header maps and bodies on this row only."
 
 func executionPhaseRole(phase string) string {
 	switch strings.ToLower(strings.TrimSpace(phase)) {
@@ -119,6 +123,7 @@ func newExecutionOperatorGuide(r engine.ExecutionRecord) *ExecutionOperatorGuide
 		PhaseExecutionKindAlignment:      executionPhaseExecutionKindAlignment,
 		SummariesListDetailParity:        executionSummariesListDetailParity,
 		CrossPhaseFilterHint:             executionCrossPhaseFilterHint,
+		PhaseSummaryCompareHint:          executionPhaseSummaryCompareHint,
 	}
 }
 

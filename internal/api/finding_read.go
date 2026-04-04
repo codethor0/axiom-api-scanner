@@ -55,7 +55,9 @@ type FindingListItem struct {
 	MutatedExecutionID     string            `json:"mutated_execution_id,omitempty"`
 	CreatedAt              time.Time         `json:"created_at"`
 	// FindingDetailPath is path-only GET for this row (same route as detail); list omits evidence_summary and read_trust_legend.
-	FindingDetailPath  string                         `json:"finding_detail_path"`
+	FindingDetailPath string `json:"finding_detail_path"`
+	// ComparisonHint is read-model text when the list row carries evidence triage or paired execution ids (omitted when neither applies).
+	ComparisonHint     string                         `json:"comparison_hint,omitempty"`
 	EvidenceInspection *FindingListEvidenceInspection `json:"evidence_inspection,omitempty"`
 }
 
@@ -68,7 +70,7 @@ type FindingListItem struct {
 //   - summary: one-line operator text (human-written or generated); not structured evidence.
 //   - evidence_summary: opaque persisted JSON (schema_version + matcher/diff payload); use evidence_inspection for a stable subset without re-parsing.
 //   - operator_assessment: optional read-model hints (tier gloss, notes/hints mirrored from evidence_summary) so clients need not parse JSON for axis meaning; severity/confidence/tier stay top-level.
-//   - read_trust_legend: stable glossary strings (detail-only) mapping each orthogonal/derived block to its role; does not repeat row values or tier-specific sentences (those stay in operator_assessment when present).
+//   - read_trust_legend: stable glossary strings (detail-only) mapping each orthogonal/derived block to its role, including finding_list_row (list vs this detail); does not repeat row values or tier-specific sentences (those stay in operator_assessment when present).
 //   - evidence_comparison_guide: optional one-line pointer to baseline vs mutated execution GETs when both ids are known (scan-scoped paths); complements evidence_inspection.matcher_outcomes (what matched) without duplicating id-only top-level fields.
 type FindingRead struct {
 	ID                     string            `json:"id"`
@@ -103,6 +105,8 @@ type FindingReadTrustLegend struct {
 	EvidenceSummary        string `json:"evidence_summary"`
 	EvidenceInspection     string `json:"evidence_inspection"`
 	OperatorAssessment     string `json:"operator_assessment"`
+	// FindingListRow explains how GET .../scans/{scan_id}/findings list items relate to this detail payload (read-path only).
+	FindingListRow string `json:"finding_list_row"`
 }
 
 var findingReadTrustLegend = FindingReadTrustLegend{
@@ -112,6 +116,18 @@ var findingReadTrustLegend = FindingReadTrustLegend{
 	EvidenceSummary:        "Opaque persisted matcher/diff JSON (schema_version, outcomes, diff points, mirrored axes); authoritative structured evidence; evidence_inspection is a derived, stable subset.",
 	EvidenceInspection:     "Derived inspection: matcher_outcomes lists each rule matcher (kind, passed) evaluated on the stored baseline vs mutated diff; diff_point_count counts normalized diff cues; execution ids here match the row—full HTTP is on the execution GETs named in evidence_comparison_guide when that field is present.",
 	OperatorAssessment:     "When present: row-level tier gloss plus assessment_note_codes and scanner_policy_hints mirrored from evidence_summary; optional and does not restate top-level severity or confidence string values.",
+	FindingListRow:         "GET .../scans/{scan_id}/findings list rows share core columns with this object but omit raw evidence_summary and this legend; list evidence_inspection holds matcher/diff counts only. This detail adds sorted matcher_outcomes, this glossary, optional evidence_comparison_guide with execution GETs when baseline and mutated ids are both set, and the full evidence JSON when stored.",
+}
+
+const findingListComparisonHintText = "List rows show matcher/diff triage counts only when evidence_inspection is present; GET finding_detail_path for matcher_outcomes (per-matcher kind and pass/fail), this read model’s legend, raw evidence_summary, and evidence_comparison_guide when baseline_execution_id and mutated_execution_id are both set (copy-paste execution GET paths there)."
+
+func findingListComparisonHint(ins *FindingListEvidenceInspection, baseID, mutID string) string {
+	baseID = strings.TrimSpace(baseID)
+	mutID = strings.TrimSpace(mutID)
+	if ins == nil && (baseID == "" || mutID == "") {
+		return ""
+	}
+	return findingListComparisonHintText
 }
 
 // FindingOperatorAssessment surfaces scanner-policy gloss and mirrored evidence codes without duplicating top-level severity / rule_declared_confidence / assessment_tier.
@@ -260,6 +276,7 @@ func linkageInspection(baseID, mutID string, outcomes []MatcherOutcomeLine, diff
 // NewFindingListItem maps a persisted finding to the list row shape (no evidence_summary JSON).
 func NewFindingListItem(f findings.Finding) FindingListItem {
 	baseID, mutID := mergedFindingExecutionIDs(f)
+	insList := parseFindingEvidenceInspectionList(f)
 	return FindingListItem{
 		ID:                     f.ID,
 		ScanID:                 f.ScanID,
@@ -275,7 +292,8 @@ func NewFindingListItem(f findings.Finding) FindingListItem {
 		MutatedExecutionID:     mutID,
 		CreatedAt:              f.CreatedAt,
 		FindingDetailPath:      findingDetailPath(f.ID),
-		EvidenceInspection:     parseFindingEvidenceInspectionList(f),
+		ComparisonHint:         findingListComparisonHint(insList, baseID, mutID),
+		EvidenceInspection:     insList,
 	}
 }
 

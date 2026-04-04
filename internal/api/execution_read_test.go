@@ -78,6 +78,9 @@ func TestNewExecutionRead_summariesAndKind(t *testing.T) {
 	if g.CrossPhaseFilterHint == "" || !strings.Contains(g.CrossPhaseFilterHint, "scan_endpoint_id") {
 		t.Fatalf("cross_phase_filter_hint %+v", g)
 	}
+	if g.PhaseSummaryCompareHint == "" || !strings.Contains(g.PhaseSummaryCompareHint, "scan_endpoint_id") {
+		t.Fatalf("phase_summary_compare_hint %+v", g)
+	}
 	if r.ExecutionsListPath != "/v1/scans/s1/executions" || r.ExecutionDetailPath != "/v1/scans/s1/executions/e1" {
 		t.Fatalf("nav paths list=%q detail=%q", r.ExecutionsListPath, r.ExecutionDetailPath)
 	}
@@ -101,6 +104,9 @@ func TestNewExecutionRead_operatorGuide_baselineRole(t *testing.T) {
 	}
 	if !strings.Contains(g.LinkageNarration, "Baseline") {
 		t.Fatalf("narration %q", g.LinkageNarration)
+	}
+	if g.PhaseSummaryCompareHint == "" {
+		t.Fatal("phase_summary_compare_hint")
 	}
 }
 
