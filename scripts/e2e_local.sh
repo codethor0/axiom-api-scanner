@@ -130,6 +130,8 @@ echo "$RUN_STATUS_JSON" | jq -e '
 ' >/dev/null
 # Ad-hoc POST .../executions/baseline|mutations does not advance run_phase; phase stays "planned" while baseline/mutation counters reflect work.
 echo "$RUN_STATUS_JSON" | jq -e '.run.phase == "planned"' >/dev/null
+echo "$RUN_STATUS_JSON" | jq -e '.run.progression_source == "adhoc"' >/dev/null
+echo "$RUN_STATUS_JSON" | jq -e '.run.findings_recording_status == "complete"' >/dev/null
 echo "$RUN_STATUS_JSON" | jq -e '.run.baseline_run_status == "succeeded"' >/dev/null
 echo "$RUN_STATUS_JSON" | jq -e '.run.mutation_run_status == "succeeded"' >/dev/null
 
@@ -192,6 +194,8 @@ PHASE2="$(echo "$RUN2" | jq -r .run.phase)"
 echo "==> E2E: GET run/status after orchestrator + drilldown scan detail URL"
 RS_ORCH="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN2/run/status")"
 echo "$RS_ORCH" | jq -e '.run.phase == "findings_complete"' >/dev/null
+echo "$RS_ORCH" | jq -e '.run.progression_source == "orchestrator"' >/dev/null
+echo "$RS_ORCH" | jq -e '.run.findings_recording_status == "complete"' >/dev/null
 SD_PATH="$(echo "$RS_ORCH" | jq -er '.drilldown.scan_detail_path')"
 [[ "$SD_PATH" == "/v1/scans/$SCAN2" ]] || { echo "scan_detail_path mismatch: want /v1/scans/$SCAN2 got $SD_PATH" >&2; exit 1; }
 curl -sf "$AXIOM_URL$SD_PATH" | jq -e '.id == "'"$SCAN2"'"' >/dev/null

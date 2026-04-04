@@ -104,6 +104,15 @@ func assertScanRunStatusWireShape(t *testing.T, body []byte) {
 			}
 		}
 	}
+	var runObj map[string]json.RawMessage
+	if err := json.Unmarshal(top["run"], &runObj); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"phase", "progression_source", "findings_recording_status"} {
+		if _, ok := runObj[k]; !ok {
+			t.Fatalf("run missing %q in %s", k, string(body))
+		}
+	}
 }
 
 func TestScanRunStatus_wireShape_successfulRun(t *testing.T) {

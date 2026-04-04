@@ -60,12 +60,14 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 
 	orchErr := orchestratorErrorOnly(scan)
 	runState := ScanRunState{
-		Phase:             string(scan.RunPhase),
-		OrchestratorError: orchErr,
-		BaselineRunStatus: strings.TrimSpace(scan.BaselineRunStatus),
-		BaselineRunError:  subBaselineErrorOnly(scan),
-		MutationRunStatus: strings.TrimSpace(scan.MutationRunStatus),
-		MutationRunError:  subMutationErrorOnly(scan),
+		Phase:                   string(scan.RunPhase),
+		OrchestratorError:       orchErr,
+		BaselineRunStatus:       strings.TrimSpace(scan.BaselineRunStatus),
+		BaselineRunError:        subBaselineErrorOnly(scan),
+		MutationRunStatus:       strings.TrimSpace(scan.MutationRunStatus),
+		MutationRunError:        subMutationErrorOnly(scan),
+		ProgressionSource:       DeriveRunProgressionSource(scan),
+		FindingsRecordingStatus: DeriveFindingsRecordingStatus(scan),
 	}
 
 	findingsSummary, ferr := buildScanFindingsSummary(r.Context(), h.Findings, id)
@@ -198,7 +200,7 @@ func buildScanRunDiagnostics(scan engine.Scan, endpointsN, secEndpoints int, aut
 		})
 	}
 	if scan.BaselineRunStatus == "succeeded" && scan.MutationRunStatus == "succeeded" && scan.MutationCandidatesTotal == 0 &&
-		(scan.RunPhase == engine.PhaseFindingsComplete || scan.RunPhase == engine.PhaseMutationComplete) {
+		(scan.RunPhase == engine.PhaseFindingsComplete || scan.RunPhase == engine.PhaseMutationComplete || scan.RunPhase == engine.PhasePlanned) {
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
 			Code:     "zero_mutation_candidates",
 			Category: ScanDiagCategorySkipped,

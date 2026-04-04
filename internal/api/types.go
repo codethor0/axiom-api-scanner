@@ -132,6 +132,7 @@ type ScanRunScanSummary struct {
 // ScanRunState is the canonical persisted orchestration snapshot (one run_phase; runner status lines from storage).
 // OrchestratorError is the scan row run_error when run_phase is failed only (pipeline stop reason).
 // BaselineRunError / MutationRunError are the last sub-runner messages only when that sub-run status is failed (not duplicated into OrchestratorError here).
+// ProgressionSource and FindingsRecordingStatus are derived read-model hints (same persisted facts; no extra storage).
 type ScanRunState struct {
 	Phase             string `json:"phase"`
 	OrchestratorError string `json:"orchestrator_error,omitempty"`
@@ -139,6 +140,10 @@ type ScanRunState struct {
 	BaselineRunError  string `json:"baseline_run_error,omitempty"`
 	MutationRunStatus string `json:"mutation_run_status,omitempty"`
 	MutationRunError  string `json:"mutation_run_error,omitempty"`
+	// ProgressionSource: orchestrator when run_phase is not "planned"; adhoc when phase is still "planned" but baseline/mutation status or findings_count show ad-hoc runner work; idle otherwise.
+	ProgressionSource string `json:"progression_source"`
+	// FindingsRecordingStatus: complete when mutation_run_status is succeeded (zero findings still counts as complete); see DeriveFindingsRecordingStatus.
+	FindingsRecordingStatus string `json:"findings_recording_status"`
 }
 
 // Diagnostic category for scan run status (automation; optional on each line). See docs/api.md.
