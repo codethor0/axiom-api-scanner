@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
 )
 
 // ReplaceScanEndpoints replaces all imported endpoints for a scan.

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/findings"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/storage"
+	"github.com/codethor0/axiom-api-scanner/internal/findings"
+	"github.com/codethor0/axiom-api-scanner/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

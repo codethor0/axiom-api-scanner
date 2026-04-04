@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	diffv1 "github.com/chomechomekitchen/axiom-api-scanner/internal/diff/v1"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/executil"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/findings"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/storage"
+	diffv1 "github.com/codethor0/axiom-api-scanner/internal/diff/v1"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/executil"
+	"github.com/codethor0/axiom-api-scanner/internal/findings"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
+	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
 // Store is persistence and findings for mutation runs.

@@ -22,7 +22,7 @@ Default execution posture is **passive** or **safe**. Destructive or high-impact
 
 Requirements: Go as specified in `go.mod` and a PostgreSQL database.
 
-Repository: [github.com/chomechomekitchen/axiom-api-scanner](https://github.com/chomechomekitchen/axiom-api-scanner) (`git clone https://github.com/chomechomekitchen/axiom-api-scanner.git`).
+Repository: [github.com/codethor0/axiom-api-scanner](https://github.com/codethor0/axiom-api-scanner) (`git clone https://github.com/codethor0/axiom-api-scanner.git`).
 
 From the repository root (so migrations resolve), set `DATABASE_URL` and start the API (migrations run on startup):
 

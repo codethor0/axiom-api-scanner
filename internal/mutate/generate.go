@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
 )
 
 // Candidate is a deterministic mutation step description (no network I/O).

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/executor/baseline"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/executor/mutation"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
+	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
 )
 
 func testHandlerWithExecutors(mem *memRepositories) *Handler {

@@ -6,11 +6,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/executil"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/mutate"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/pathutil"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/executil"
+	"github.com/codethor0/axiom-api-scanner/internal/mutate"
+	"github.com/codethor0/axiom-api-scanner/internal/pathutil"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
 )
 
 // BuiltRequest is an HTTP request description without side effects.

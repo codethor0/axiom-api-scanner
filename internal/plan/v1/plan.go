@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
 )
 
 // Decision explains planner eligibility for one rule on one endpoint.

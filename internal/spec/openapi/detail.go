@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 

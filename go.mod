@@ -1,4 +1,4 @@
-module github.com/chomechomekitchen/axiom-api-scanner
+module github.com/codethor0/axiom-api-scanner
 
 go 1.25.0
 

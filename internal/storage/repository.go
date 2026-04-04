@@ -3,8 +3,8 @@ package storage
 import (
 	"context"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/findings"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/findings"
 )
 
 // CreateScanInput is validated by the API before persistence.

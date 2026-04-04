@@ -3,8 +3,8 @@ package v1
 import (
 	"testing"
 
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
-	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
+	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
 )
 
 func TestEvaluateRuleMatchersWithOutcomes_collectsRows(t *testing.T) {
