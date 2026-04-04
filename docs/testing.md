@@ -130,7 +130,16 @@ This runs `scripts/e2e_local.sh`, which:
 
 1. Starts `deploy/e2e/docker-compose.yml` services **`axiom-pg`** (Postgres on `127.0.0.1:54334`, DB `axiom_e2e`, user/password `axiom`) and **`httpbin`** (`mccutchen/go-httpbin` on `127.0.0.1:18080`).
 2. Builds `bin/axiom-api-e2e` and listens on `127.0.0.1:8080` with `DATABASE_URL=postgres://axiom:axiom@127.0.0.1:54334/axiom_e2e?sslmode=disable`.
-3. Exercises, via `curl` + `jq`: create scan with `base_url` = httpbin, `POST .../specs/openapi` with `testdata/e2e/httpbin-openapi.yaml`, list endpoints, baseline, mutations, list executions, list findings, optional finding + evidence GETs, then a second scan with `POST .../run` (`action: start`) and a second `POST .../run` (`action: resume`) after `findings_complete`.
+3. Exercises, via `curl` + `jq`, the **first scan** (ad-hoc runners): create scan, import `testdata/e2e/httpbin-openapi.yaml`, list endpoints, `POST .../executions/baseline`, `POST .../executions/mutations`, **`GET .../executions/{id}`** (detail: `phase`/`execution_kind` alignment, request vs `request_summary` parity), **`GET .../run/status`** (drilldown paths, diagnostics arrays), **`GET .../endpoints/{endpointID}`** (investigation + drilldown query fragment contains `scan_endpoint_id=`), findings list, **finding detail** (`severity`, `assessment_tier`, `rule_declared_confidence`, `evidence_inspection` present), evidence GET, optional **filtered findings** `?scan_endpoint_id=...` when rows exist.
+4. **Second scan** (orchestrator): import same fixture, `POST .../run` with `action: start` (expects terminal `run.phase == findings_complete` on the response), `POST .../run` with `action: resume` (phase unchanged), **`GET .../run/status`**, then **`GET`** the URL from `drilldown.scan_detail_path` and assert the scan id.
+
+**Fixed target assumptions:** spec `servers` and scan `base_url` point at **`127.0.0.1:18080`** (httpbin from compose). Rules load from repo **`rules/`** via `AXIOM_RULES_DIR`. No outbound traffic leaves localhost except to that httpbin port.
+
+**Proven when green:** safe V1 import, inventory, baseline + mutation persistence, execution and finding read models, run-status envelope shape, endpoint drilldown fragments, orchestrated run through `findings_complete`, and idempotent `resume` on an already-complete run.
+
+**What the harness does not prove:** crAPI/Juice Shop behavior, auth beyond optional separate targets, every rule family on every endpoint shape, or CI reproducibility (this flow is **local Docker only**).
+
+**Ad-hoc vs orchestration (`run.phase`):** After **`POST .../executions/baseline`** and **`POST .../executions/mutations`**, persisted **`run_phase`** remains the default **`planned`**; **`summary` / `progress`** counters and execution/finding rows still reflect completed work. **`GET .../run/status`** therefore shows **`run.phase == "planned"`** with **`baseline_run_status` / `mutation_run_status`** succeeded for the first scan in this script. Only **`POST .../run`** advances **`run_phase`** to terminal **`findings_complete`** (second scan). Operators should treat **`run.phase`** as the orchestration cursor, not as an automatic mirror of ad-hoc runner POSTs.
 
 **Prerequisites:** `docker`, `curl`, `jq`, `go`.
 

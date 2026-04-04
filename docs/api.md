@@ -25,6 +25,8 @@ All successful JSON responses use explicit structs. Errors use this envelope:
 
 Duplicate numbers between **`summary`**, **`progress`**, and **`findings_summary`** are intentional mirrors for the same persisted facts (see run status invariants), not alternate estimators.
 
+**Repeatable local validation:** `make e2e-local` (see [testing.md](testing.md#local-docker-end-to-end-v1)) drives a fixed **httpbin** + Postgres stack, exercises import, inventory, ad-hoc baseline/mutation POSTs, **`GET .../run/status`**, endpoint detail drilldown, execution list/detail, findings list/detail + evidence, filtered findings, then a second scan using **`POST .../run`**. After ad-hoc runner POSTs, **`run.phase`** may remain **`planned`** while baseline/mutation sub-status fields show **`succeeded`**; orchestration via **`POST .../run`** aligns **`run.phase`** with **`findings_complete`** when the pipeline finishes.
+
 ## Scans
 
 ### POST /v1/scans

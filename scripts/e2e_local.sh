@@ -103,8 +103,45 @@ MUT_JSON="$(curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/mutations"
 echo "$MUT_JSON" | jq -e '.result.status == "succeeded"' >/dev/null
 
 echo "==> E2E: executions list"
-EXEC_N="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions" | jq '.items | length')"
+EXEC_LIST="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions")"
+EXEC_N="$(echo "$EXEC_LIST" | jq '.items | length')"
 [[ "$EXEC_N" -ge 1 ]]
+
+echo "==> E2E: execution detail (first row)"
+EXEC_ID="$(echo "$EXEC_LIST" | jq -er '.items[0].id')"
+EX_DETAIL="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions/$EXEC_ID")"
+echo "$EX_DETAIL" | jq -e '
+  (.phase == .execution_kind) and
+  (.request.method != null) and
+  (.request_summary.method == .request.method) and
+  (.response_summary.status_code >= 100)
+' >/dev/null
+
+echo "==> E2E: run status (ad-hoc baseline/mutation scan)"
+RUN_STATUS_JSON="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/run/status")"
+echo "$RUN_STATUS_JSON" | jq -e '
+  (.run.phase != null) and
+  (.run.baseline_run_status != null) and
+  (.drilldown.scan_id == "'"$SCAN_ID"'") and
+  (.drilldown.findings_list_path | startswith("/v1/scans/")) and
+  (.drilldown.executions_list_path | startswith("/v1/scans/")) and
+  (.diagnostics.consistency_detail | type == "array") and
+  (.diagnostics.blocked_detail | type == "array")
+' >/dev/null
+# Ad-hoc POST .../executions/baseline|mutations does not advance run_phase; phase stays "planned" while baseline/mutation counters reflect work.
+echo "$RUN_STATUS_JSON" | jq -e '.run.phase == "planned"' >/dev/null
+echo "$RUN_STATUS_JSON" | jq -e '.run.baseline_run_status == "succeeded"' >/dev/null
+echo "$RUN_STATUS_JSON" | jq -e '.run.mutation_run_status == "succeeded"' >/dev/null
+
+echo "==> E2E: endpoint inventory detail + drilldown"
+EP_ID="$(echo "$ENDPOINTS" | jq -er '.items[0].id')"
+EP_DETAIL="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/endpoints/$EP_ID")"
+echo "$EP_DETAIL" | jq -e '
+  (.id == "'"$EP_ID"'") and
+  (.investigation | type == "object") and
+  (.drilldown.scan_endpoint_id == "'"$EP_ID"'") and
+  (.drilldown.findings_list_query | contains("scan_endpoint_id="))
+' >/dev/null
 
 echo "==> E2E: findings list"
 FINDINGS_JSON="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings")"
@@ -115,8 +152,19 @@ FIRST_LEN="$(echo "$FINDINGS_JSON" | jq '.items | length')"
 if [[ "$FIRST_LEN" -ge 1 ]]; then
   FID="$(echo "$FINDINGS_JSON" | jq -er '.items[0].id')"
   echo "==> E2E: finding detail + evidence ($FID)"
-  curl -sf "$AXIOM_URL/v1/findings/$FID" | jq -e .id >/dev/null
+  FDETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID")"
+  echo "$FDETAIL" | jq -e '
+    (.severity != null) and
+    (.assessment_tier != null) and
+    (.rule_declared_confidence != null) and
+    (.evidence_inspection != null)
+  ' >/dev/null
   curl -sf "$AXIOM_URL/v1/findings/$FID/evidence" | jq -e .finding_id >/dev/null
+  SE_ID="$(echo "$FINDINGS_JSON" | jq -r '.items[0].scan_endpoint_id // empty')"
+  if [[ -n "$SE_ID" ]]; then
+    echo "==> E2E: findings list filtered by scan_endpoint_id"
+    curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings?scan_endpoint_id=$SE_ID" | jq -e '(.items | length) >= 1' >/dev/null
+  fi
 fi
 
 echo "==> E2E: orchestrated run (resume path smoke: second run)"
@@ -140,6 +188,13 @@ RUN2="$(curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN2/run" \
   -d '{"action":"resume"}')"
 PHASE2="$(echo "$RUN2" | jq -r .run.phase)"
 [[ "$PHASE1" == "$PHASE2" ]] || { echo "resume changed terminal phase unexpectedly" >&2; exit 1; }
+
+echo "==> E2E: GET run/status after orchestrator + drilldown scan detail URL"
+RS_ORCH="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN2/run/status")"
+echo "$RS_ORCH" | jq -e '.run.phase == "findings_complete"' >/dev/null
+SD_PATH="$(echo "$RS_ORCH" | jq -er '.drilldown.scan_detail_path')"
+[[ "$SD_PATH" == "/v1/scans/$SCAN2" ]] || { echo "scan_detail_path mismatch: want /v1/scans/$SCAN2 got $SD_PATH" >&2; exit 1; }
+curl -sf "$AXIOM_URL$SD_PATH" | jq -e '.id == "'"$SCAN2"'"' >/dev/null
 
 if [[ "$SKIP_CRAPI" != "1" ]] && [[ -n "$CRAPI_OPENAPI_URL" ]]; then
   echo "==> Optional crAPI: import from $CRAPI_OPENAPI_URL"
