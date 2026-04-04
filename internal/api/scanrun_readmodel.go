@@ -12,11 +12,11 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
-func filterMutatedExecutions(all []engine.ExecutionRecord) []engine.ExecutionRecord {
-	var out []engine.ExecutionRecord
-	for _, ex := range all {
-		if ex.Phase == engine.PhaseMutated {
-			out = append(out, ex)
+func filterMutatedTallies(all []engine.ExecutionRunTally) []engine.ExecutionRunTally {
+	var out []engine.ExecutionRunTally
+	for _, t := range all {
+		if t.Phase == engine.PhaseMutated {
+			out = append(out, t)
 		}
 	}
 	return out
@@ -71,32 +71,15 @@ func buildScanFindingsSummary(ctx context.Context, repo storage.FindingRepositor
 	if repo == nil {
 		return ScanFindingsSummary{}, nil
 	}
-	list, err := repo.ListByScanID(ctx, scanID, storage.FindingListFilter{})
+	sum, err := repo.SummarizeFindingsForScan(ctx, scanID)
 	if err != nil {
 		return ScanFindingsSummary{}, err
 	}
-	out := ScanFindingsSummary{
-		Total:            len(list),
-		ByAssessmentTier: map[string]int{},
-		BySeverity:       map[string]int{},
-	}
-	for _, f := range list {
-		tier := strings.TrimSpace(f.AssessmentTier)
-		if tier != "" {
-			out.ByAssessmentTier[tier]++
-		}
-		sev := strings.TrimSpace(string(f.Severity))
-		if sev != "" {
-			out.BySeverity[sev]++
-		}
-	}
-	if len(out.ByAssessmentTier) == 0 {
-		out.ByAssessmentTier = nil
-	}
-	if len(out.BySeverity) == 0 {
-		out.BySeverity = nil
-	}
-	return out, nil
+	return ScanFindingsSummary{
+		Total:            sum.Total,
+		ByAssessmentTier: sum.ByAssessmentTier,
+		BySeverity:       sum.BySeverity,
+	}, nil
 }
 
 // familyKey identifies one of the four stable V1 mutation families surfaced on the run status API.
@@ -162,7 +145,7 @@ func countEndpointsDeclaringSecurity(endpoints []engine.ScanEndpoint) int {
 	return n
 }
 
-func buildScanRunRuleFamilyCoverage(scan engine.Scan, rulesList []rules.Rule, mutated []engine.ExecutionRecord, endpoints []engine.ScanEndpoint, authConfigured bool) ScanRunRuleFamilyCoverage {
+func buildScanRunRuleFamilyCoverage(scan engine.Scan, rulesList []rules.Rule, mutated []engine.ExecutionRunTally, endpoints []engine.ScanEndpoint, authConfigured bool) ScanRunRuleFamilyCoverage {
 	ruleByID := make(map[string]rules.Rule, len(rulesList))
 	for i := range rulesList {
 		rid := strings.TrimSpace(rulesList[i].ID)

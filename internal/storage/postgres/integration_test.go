@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/codethor0/axiom-api-scanner/internal/dbmigrate"
@@ -306,5 +307,51 @@ func TestFindingWrite_integration(t *testing.T) {
 	}
 	if one.ID != bid || one.Phase != engine.PhaseBaseline {
 		t.Fatal(one)
+	}
+
+	fsum, err := s.SummarizeFindingsForScan(ctx, scan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flist, err := s.ListByScanID(ctx, scan.ID, storage.FindingListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsum.Total != len(flist) {
+		t.Fatalf("SummarizeFindingsForScan total %d list len %d", fsum.Total, len(flist))
+	}
+	var tierN, sevN int
+	for _, f := range flist {
+		if t := strings.TrimSpace(f.AssessmentTier); t != "" {
+			tierN++
+		}
+		if s := strings.TrimSpace(string(f.Severity)); s != "" {
+			sevN++
+		}
+	}
+	sumTier := 0
+	for _, n := range fsum.ByAssessmentTier {
+		sumTier += n
+	}
+	sumSev := 0
+	for _, n := range fsum.BySeverity {
+		sumSev += n
+	}
+	if sumTier != tierN || sumSev != sevN {
+		t.Fatalf("bucket sums tier %d vs %d sev %d vs %d fsum=%+v", sumTier, tierN, sumSev, sevN, fsum)
+	}
+
+	tallies, err := s.ListExecutionRunTallies(ctx, scan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tallies) != len(list) {
+		t.Fatalf("tallies %d list %d", len(tallies), len(list))
+	}
+	for i := range tallies {
+		if tallies[i].ScanEndpointID != list[i].ScanEndpointID || tallies[i].Phase != list[i].Phase ||
+			tallies[i].ResponseStatus != list[i].ResponseStatus || tallies[i].RuleID != list[i].RuleID {
+			t.Fatalf("i=%d tally=%+v full=%+v", i, tallies[i], list[i])
+		}
 	}
 }

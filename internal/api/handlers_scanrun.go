@@ -75,21 +75,21 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 
 	findingsSummary, ferr := buildScanFindingsSummary(r.Context(), h.Findings, id)
 	if ferr != nil {
-		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list findings for summary")
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not summarize findings")
 		return
 	}
 
-	var allExec []engine.ExecutionRecord
+	var execTallies []engine.ExecutionRunTally
 	if h.Executions != nil {
 		var exErr error
-		allExec, exErr = h.Executions.ListExecutions(r.Context(), id, storage.ExecutionListFilter{})
+		execTallies, exErr = h.Executions.ListExecutionRunTallies(r.Context(), id)
 		if exErr != nil {
-			writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions")
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list execution tallies for run summary")
 			return
 		}
 	}
-	mutated := filterMutatedExecutions(allExec)
-	protectedCov := buildScanRunProtectedRouteCoverage(endpoints, allExec, h.Executions != nil)
+	mutated := filterMutatedTallies(execTallies)
+	protectedCov := buildScanRunProtectedRouteCoverage(endpoints, execTallies, h.Executions != nil)
 
 	var fam ScanRunRuleFamilyCoverage
 	switch {
@@ -108,7 +108,7 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 
 	diagnostics := buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured)
 	appendAuthAndRouteDiagnostics(&diagnostics, scan, authConfigured, protectedCov)
-	diagnostics.ConsistencyDetail = scanRunConsistencyLines(scan, findingsSummary, h.Findings != nil, mutated, fam)
+	diagnostics.ConsistencyDetail = scanRunConsistencyLines(scan, findingsSummary, h.Findings != nil, len(mutated), fam)
 
 	out := ScanRunStatusResponse{
 		Scan: ScanRunScanSummary{

@@ -65,6 +65,66 @@ func (s *Store) ListByScanID(ctx context.Context, scanID string, filter storage.
 	return list, nil
 }
 
+// SummarizeFindingsForScan returns finding totals and bucket counts without loading full rows.
+func (s *Store) SummarizeFindingsForScan(ctx context.Context, scanID string) (storage.FindingsScanSummary, error) {
+	var total int
+	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM findings WHERE scan_id = $1`, scanID).Scan(&total); err != nil {
+		return storage.FindingsScanSummary{}, fmt.Errorf("findings total: %w", err)
+	}
+	out := storage.FindingsScanSummary{
+		Total:            total,
+		ByAssessmentTier: map[string]int{},
+		BySeverity:       map[string]int{},
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT trim(assessment_tier), COUNT(*) FROM findings WHERE scan_id = $1 AND trim(assessment_tier) <> '' GROUP BY trim(assessment_tier)`,
+		scanID)
+	if err != nil {
+		return storage.FindingsScanSummary{}, fmt.Errorf("findings tier groups: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tier string
+		var n int
+		if scanErr := rows.Scan(&tier, &n); scanErr != nil {
+			return storage.FindingsScanSummary{}, scanErr
+		}
+		out.ByAssessmentTier[tier] = n
+	}
+	if err = rows.Err(); err != nil {
+		return storage.FindingsScanSummary{}, err
+	}
+
+	srows, err := s.pool.Query(ctx,
+		`SELECT severity::text, COUNT(*) FROM findings WHERE scan_id = $1 GROUP BY severity`,
+		scanID)
+	if err != nil {
+		return storage.FindingsScanSummary{}, fmt.Errorf("findings severity groups: %w", err)
+	}
+	defer srows.Close()
+	for srows.Next() {
+		var sev string
+		var n int
+		if scanErr := srows.Scan(&sev, &n); scanErr != nil {
+			return storage.FindingsScanSummary{}, scanErr
+		}
+		sev = strings.TrimSpace(sev)
+		if sev != "" {
+			out.BySeverity[sev] = n
+		}
+	}
+	if err = srows.Err(); err != nil {
+		return storage.FindingsScanSummary{}, err
+	}
+	if len(out.ByAssessmentTier) == 0 {
+		out.ByAssessmentTier = nil
+	}
+	if len(out.BySeverity) == 0 {
+		out.BySeverity = nil
+	}
+	return out, nil
+}
+
 const sevOrdExpr = `(CASE severity WHEN 'info' THEN 0 WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 WHEN 'critical' THEN 4 ELSE 99 END)`
 
 // ListFindingsPage returns one page of findings using keyset pagination.

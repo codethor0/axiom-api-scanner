@@ -9,13 +9,13 @@ import (
 
 // scanRunConsistencyLines returns grounded diagnostics when persisted read-model fields disagree.
 // It never mutates storage or repairs values; callers surface these under diagnostics.consistency_detail.
-func scanRunConsistencyLines(scan engine.Scan, findingsSummary ScanFindingsSummary, findingsRepoConfigured bool, mutated []engine.ExecutionRecord, fam ScanRunRuleFamilyCoverage) []ScanRunDiagnosticLine {
+func scanRunConsistencyLines(scan engine.Scan, findingsSummary ScanFindingsSummary, findingsRepoConfigured bool, mutatedExecutionCount int, fam ScanRunRuleFamilyCoverage) []ScanRunDiagnosticLine {
 	out := make([]ScanRunDiagnosticLine, 0, 4)
 	if findingsRepoConfigured && findingsSummary.Total != scan.FindingsCount {
 		out = append(out, ScanRunDiagnosticLine{
 			Code: "findings_count_drift",
 			Detail: "scans.findings_count is " + strconv.Itoa(scan.FindingsCount) +
-				" but findings_summary.total from ListByScanID is " + strconv.Itoa(findingsSummary.Total),
+				" but findings_summary.total from persisted findings aggregate is " + strconv.Itoa(findingsSummary.Total),
 		})
 	}
 	if scan.BaselineEndpointsTotal < 0 || scan.BaselineEndpointsDone < 0 {
@@ -46,7 +46,7 @@ func scanRunConsistencyLines(scan engine.Scan, findingsSummary ScanFindingsSumma
 	if fam.UnavailableReason != nil {
 		return out
 	}
-	nMut := len(mutated)
+	nMut := mutatedExecutionCount
 	sumFam := fam.IDORPathOrQuery.MutatedExecutions +
 		fam.MassAssignment.MutatedExecutions +
 		fam.PathNormalization.MutatedExecutions +

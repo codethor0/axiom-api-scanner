@@ -197,6 +197,42 @@ func (s *Store) ListExecutions(ctx context.Context, scanID string, filter storag
 	return list, rows.Err()
 }
 
+// ListExecutionRunTallies returns minimal execution columns for scan run status aggregation (no bodies/headers/URLs).
+func (s *Store) ListExecutionRunTallies(ctx context.Context, scanID string) ([]engine.ExecutionRunTally, error) {
+	const q = `
+SELECT scan_endpoint_id, phase, rule_id, response_status
+FROM execution_records
+WHERE scan_id = $1
+ORDER BY created_at ASC, id ASC`
+	rows, err := s.pool.Query(ctx, q, scanID)
+	if err != nil {
+		return nil, fmt.Errorf("list execution run tallies: %w", err)
+	}
+	defer rows.Close()
+	var out []engine.ExecutionRunTally
+	for rows.Next() {
+		var epID *string
+		var phase engine.ExecutionPhase
+		var ruleID *string
+		var status int
+		if err := rows.Scan(&epID, &phase, &ruleID, &status); err != nil {
+			return nil, err
+		}
+		t := engine.ExecutionRunTally{Phase: phase, ResponseStatus: status}
+		if epID != nil {
+			t.ScanEndpointID = *epID
+		}
+		if ruleID != nil {
+			t.RuleID = *ruleID
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 const phaseOrdExpr = `(CASE phase WHEN 'baseline' THEN 0 ELSE 1 END)`
 
 // ListExecutionsPage lists execution records using keyset pagination (stable for concurrent inserts relative to cursor).

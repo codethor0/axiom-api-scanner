@@ -222,6 +222,34 @@ func (m *memRepositories) ListExecutions(_ context.Context, scanID string, filte
 	return list, nil
 }
 
+func (m *memRepositories) ListExecutionRunTallies(_ context.Context, scanID string) ([]engine.ExecutionRunTally, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var list []engine.ExecutionRecord
+	for _, rec := range m.execRecords {
+		if rec.ScanID != scanID {
+			continue
+		}
+		list = append(list, rec)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].CreatedAt.Equal(list[j].CreatedAt) {
+			return list[i].ID < list[j].ID
+		}
+		return list[i].CreatedAt.Before(list[j].CreatedAt)
+	})
+	out := make([]engine.ExecutionRunTally, len(list))
+	for i := range list {
+		out[i] = engine.ExecutionRunTally{
+			ScanEndpointID: list[i].ScanEndpointID,
+			Phase:          list[i].Phase,
+			ResponseStatus: list[i].ResponseStatus,
+			RuleID:         list[i].RuleID,
+		}
+	}
+	return out, nil
+}
+
 func (m *memRepositories) ListExecutionsPage(_ context.Context, scanID string, filter storage.ExecutionListFilter, opts storage.ExecutionListPageOptions) (storage.ExecutionListPage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -551,6 +579,34 @@ func (m *memRepositories) ListFindingsPage(_ context.Context, scanID string, fil
 			return storage.FindingListPage{}, err
 		}
 		out.NextCursor = cur
+	}
+	return out, nil
+}
+
+func (m *memRepositories) SummarizeFindingsForScan(_ context.Context, scanID string) (storage.FindingsScanSummary, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	list := m.byScan[scanID]
+	out := storage.FindingsScanSummary{
+		Total:            len(list),
+		ByAssessmentTier: map[string]int{},
+		BySeverity:       map[string]int{},
+	}
+	for _, f := range list {
+		tier := strings.TrimSpace(f.AssessmentTier)
+		if tier != "" {
+			out.ByAssessmentTier[tier]++
+		}
+		sev := strings.TrimSpace(string(f.Severity))
+		if sev != "" {
+			out.BySeverity[sev]++
+		}
+	}
+	if len(out.ByAssessmentTier) == 0 {
+		out.ByAssessmentTier = nil
+	}
+	if len(out.BySeverity) == 0 {
+		out.BySeverity = nil
 	}
 	return out, nil
 }

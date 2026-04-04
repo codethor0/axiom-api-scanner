@@ -103,6 +103,8 @@ type ExecutionRepository interface {
 	ListExecutions(ctx context.Context, scanID string, filter ExecutionListFilter) ([]engine.ExecutionRecord, error)
 	// ListExecutionsPage returns a keyset page (opaque cursor); sort field must be ExecListSortCreatedAt or ExecListSortPhase.
 	ListExecutionsPage(ctx context.Context, scanID string, filter ExecutionListFilter, opts ExecutionListPageOptions) (ExecutionListPage, error)
+	// ListExecutionRunTallies returns minimal columns for scan run status (protected-route and rule-family aggregation).
+	ListExecutionRunTallies(ctx context.Context, scanID string) ([]engine.ExecutionRunTally, error)
 	GetExecution(ctx context.Context, scanID, executionID string) (engine.ExecutionRecord, error)
 }
 
@@ -141,6 +143,8 @@ type CreateFindingInput struct {
 // FindingRepository lists and fetches finding rows linked to scans.
 type FindingRepository interface {
 	ListByScanID(ctx context.Context, scanID string, filter FindingListFilter) ([]findings.Finding, error)
+	// SummarizeFindingsForScan returns count distributions without loading full finding rows (scan run status read path).
+	SummarizeFindingsForScan(ctx context.Context, scanID string) (FindingsScanSummary, error)
 	// ListFindingsPage returns a keyset page; sort field must be FindingListSortCreatedAt or FindingListSortSeverity.
 	ListFindingsPage(ctx context.Context, scanID string, filter FindingListFilter, opts FindingListPageOptions) (FindingListPage, error)
 	GetByID(ctx context.Context, id string) (findings.Finding, error)

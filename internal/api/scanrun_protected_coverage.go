@@ -24,7 +24,7 @@ func endpointInBaselineRunnerScope(ep engine.ScanEndpoint) bool {
 	}
 }
 
-func buildScanRunProtectedRouteCoverage(endpoints []engine.ScanEndpoint, allExec []engine.ExecutionRecord, execRepo bool) ScanRunProtectedRouteCoverage {
+func buildScanRunProtectedRouteCoverage(endpoints []engine.ScanEndpoint, allExec []engine.ExecutionRunTally, execRepo bool) ScanRunProtectedRouteCoverage {
 	out := ScanRunProtectedRouteCoverage{ExecutionsRepositoryConfigured: execRepo}
 	epByID := make(map[string]engine.ScanEndpoint, len(endpoints))
 	for _, ep := range endpoints {

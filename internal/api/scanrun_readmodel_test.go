@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
 	"github.com/codethor0/axiom-api-scanner/internal/rules"
+	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
 func TestBuildScanRunReadSummary_skippedOnlyOnSucceeded(t *testing.T) {
@@ -48,7 +51,7 @@ func TestBuildScanRunRuleFamilyCoverage_exercisedFromMutatedRows(t *testing.T) {
 			{Kind: rules.MutationReplacePathParam},
 		},
 	}
-	mut := []engine.ExecutionRecord{
+	mut := []engine.ExecutionRunTally{
 		{Phase: engine.PhaseMutated, RuleID: "r1"},
 	}
 	ep := []engine.ScanEndpoint{{ID: "e1", Method: "GET", PathTemplate: "/p/{id}"}}
@@ -115,6 +118,79 @@ func TestBuildScanRunRuleFamilyCoverage_notExercisedAuthContributor(t *testing.T
 	}
 	if !found {
 		t.Fatalf("want auth contributor, got %+v", cov.IDORPathOrQuery.NotExercisedContributors)
+	}
+}
+
+func TestSummarizeFindingsForScan_mem_matchesUnfilteredList(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := scan.ID
+	for _, in := range []storage.CreateFindingInput{
+		{ScanID: id, RuleID: "a", Category: "c", Severity: findings.SeverityHigh, AssessmentTier: "confirmed", Summary: "s1", Evidence: storage.CreateEvidenceInput{}},
+		{ScanID: id, RuleID: "b", Category: "c", Severity: findings.SeverityLow, AssessmentTier: "tentative", Summary: "s2", Evidence: storage.CreateEvidenceInput{}},
+	} {
+		if _, cerr := mem.CreateFinding(ctx, in); cerr != nil {
+			t.Fatal(cerr)
+		}
+	}
+	sum, err := mem.SummarizeFindingsForScan(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := mem.ListByScanID(ctx, id, storage.FindingListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := findingsSummaryFromList(list)
+	if sum.Total != want.Total || !reflect.DeepEqual(sum.ByAssessmentTier, want.ByAssessmentTier) || !reflect.DeepEqual(sum.BySeverity, want.BySeverity) {
+		t.Fatalf("sum %#v want %#v", sum, want)
+	}
+}
+
+func TestListExecutionRunTallies_mem_matchesFullListProjection(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe", BaseURL: "http://127.0.0.1:9"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := scan.ID
+	if rerr := mem.ReplaceScanEndpoints(ctx, id, []engine.EndpointSpec{{Method: "GET", Path: "/x"}}); rerr != nil {
+		t.Fatal(rerr)
+	}
+	eps, err := mem.ListScanEndpoints(ctx, id)
+	if err != nil || len(eps) != 1 {
+		t.Fatal(eps, err)
+	}
+	epID := eps[0].ID
+	for _, rec := range []engine.ExecutionRecord{
+		{ScanID: id, ScanEndpointID: epID, Phase: engine.PhaseBaseline, RequestMethod: "GET", RequestURL: "http://x", ResponseStatus: 200, RuleID: ""},
+		{ScanID: id, ScanEndpointID: epID, Phase: engine.PhaseMutated, RequestMethod: "GET", RequestURL: "http://x", ResponseStatus: 418, RuleID: "r1"},
+	} {
+		if _, ierr := mem.InsertExecutionRecord(ctx, rec); ierr != nil {
+			t.Fatal(ierr)
+		}
+	}
+	full, err := mem.ListExecutions(ctx, id, storage.ExecutionListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tallies, err := mem.ListExecutionRunTallies(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tallies) != len(full) {
+		t.Fatalf("len tally %d full %d", len(tallies), len(full))
+	}
+	for i := range tallies {
+		if tallies[i].ScanEndpointID != full[i].ScanEndpointID || tallies[i].Phase != full[i].Phase ||
+			tallies[i].ResponseStatus != full[i].ResponseStatus || tallies[i].RuleID != full[i].RuleID {
+			t.Fatalf("i=%d tally=%+v full=%+v", i, tallies[i], full[i])
+		}
 	}
 }
 

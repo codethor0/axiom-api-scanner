@@ -9,7 +9,7 @@ import (
 func TestBuildScanRunProtectedRouteCoverage_splitsBaselineBySecurityDeclaration(t *testing.T) {
 	pub := engine.ScanEndpoint{ID: "p1", Method: "GET", PathTemplate: "/a"}
 	sec := engine.ScanEndpoint{ID: "s1", Method: "GET", PathTemplate: "/b", SecuritySchemeHints: []string{"Bearer"}}
-	exec := []engine.ExecutionRecord{
+	exec := []engine.ExecutionRunTally{
 		{Phase: engine.PhaseBaseline, ScanEndpointID: "p1", ResponseStatus: 200},
 		{Phase: engine.PhaseBaseline, ScanEndpointID: "s1", ResponseStatus: 401},
 		{Phase: engine.PhaseMutated, ScanEndpointID: "s1", RuleID: "r1"},
