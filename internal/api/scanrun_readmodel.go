@@ -154,6 +154,12 @@ func buildScanRunRuleFamilyCoverage(scan engine.Scan, rulesList []rules.Rule, mu
 		}
 	}
 	rulesInPack := make(map[familyKey]int)
+	rulesByFamily := map[familyKey][]rules.Rule{
+		familyIDOR:              rulesForFamily(rulesList, familyIDOR),
+		familyMassAssignment:    rulesForFamily(rulesList, familyMassAssignment),
+		familyPathNormalization: rulesForFamily(rulesList, familyPathNormalization),
+		familyRateLimitHeaders:  rulesForFamily(rulesList, familyRateLimitHeaders),
+	}
 	for _, r := range rulesList {
 		for fk := range ruleFamilies(r) {
 			rulesInPack[fk]++
@@ -176,13 +182,13 @@ func buildScanRunRuleFamilyCoverage(scan engine.Scan, rulesList []rules.Rule, mu
 	secN := countEndpointsDeclaringSecurity(endpoints)
 	out := ScanRunRuleFamilyCoverage{
 		IDORPathOrQuery: familyEntry(scan, rulesInPack[familyIDOR], mutCount[familyIDOR],
-			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyIDOR)), secN, authConfigured),
+			countEligibleEndpointsForFamily(endpoints, rulesByFamily[familyIDOR]), secN, authConfigured),
 		MassAssignment: familyEntry(scan, rulesInPack[familyMassAssignment], mutCount[familyMassAssignment],
-			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyMassAssignment)), secN, authConfigured),
+			countEligibleEndpointsForFamily(endpoints, rulesByFamily[familyMassAssignment]), secN, authConfigured),
 		PathNormalization: familyEntry(scan, rulesInPack[familyPathNormalization], mutCount[familyPathNormalization],
-			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyPathNormalization)), secN, authConfigured),
+			countEligibleEndpointsForFamily(endpoints, rulesByFamily[familyPathNormalization]), secN, authConfigured),
 		RateLimitHeaders: familyEntry(scan, rulesInPack[familyRateLimitHeaders], mutCount[familyRateLimitHeaders],
-			countEligibleEndpointsForFamily(endpoints, rulesForFamily(rulesList, familyRateLimitHeaders)), secN, authConfigured),
+			countEligibleEndpointsForFamily(endpoints, rulesByFamily[familyRateLimitHeaders]), secN, authConfigured),
 	}
 	return out
 }

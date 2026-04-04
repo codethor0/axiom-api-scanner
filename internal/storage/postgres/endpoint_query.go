@@ -8,7 +8,8 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
-// endpointInventoryExecFindingCTEs counts baseline/mutated execution rows and findings per scan_endpoint for scan_id $1 (reused by inventory list with summary).
+// endpointInventoryExecFindingCTEs counts baseline/mutated execution rows and findings per scan_endpoint for scan_id $1.
+// Used by ListEndpointInventoryPage when IncludeSummary is true (one pass for the page). GET single-endpoint inventory uses correlated subqueries instead.
 const endpointInventoryExecFindingCTEs = `
 WITH b AS (
   SELECT scan_endpoint_id, COUNT(*)::int AS n FROM execution_records

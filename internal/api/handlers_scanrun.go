@@ -42,12 +42,7 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nEp := len(endpoints)
-	secEndpoints := 0
-	for _, ep := range endpoints {
-		if len(ep.SecuritySchemeHints) > 0 {
-			secEndpoints++
-		}
-	}
+	secEndpoints := countEndpointsDeclaringSecurity(endpoints)
 	authConfigured := len(scan.AuthHeaders) > 0
 	cov := ScanRunCoverage{
 		AuthHeadersConfigured:      authConfigured,

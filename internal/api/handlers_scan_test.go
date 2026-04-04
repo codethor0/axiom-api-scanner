@@ -63,7 +63,7 @@ func (m *memRepositories) CreateScan(_ context.Context, in storage.CreateScanInp
 		BaselineEndpointsTotal: 0,
 		BaselineEndpointsDone:  0,
 		CreatedAt:              now,
-		UpdatedAt:                now,
+		UpdatedAt:              now,
 	}
 	m.scans[id] = s
 	return s, nil
@@ -174,24 +174,7 @@ func (m *memRepositories) ListEndpointInventoryPage(_ context.Context, scanID st
 	for i, ep := range eps {
 		ent := storage.EndpointInventoryEntry{Endpoint: ep}
 		if opt.IncludeSummary {
-			var sum storage.EndpointInventorySummary
-			for _, rec := range m.execRecords {
-				if rec.ScanID != scanID || rec.ScanEndpointID != ep.ID {
-					continue
-				}
-				switch rec.Phase {
-				case engine.PhaseBaseline:
-					sum.BaselineExecutionsRecorded++
-				case engine.PhaseMutated:
-					sum.MutationExecutionsRecorded++
-				}
-			}
-			for _, f := range m.byScan[scanID] {
-				if f.ScanEndpointID == ep.ID {
-					sum.FindingsRecorded++
-				}
-			}
-			ent.Summary = sum
+			ent.Summary = m.endpointInventorySummaryLocked(scanID, ep.ID)
 		}
 		ents[i] = ent
 	}
@@ -259,29 +242,33 @@ func (m *memRepositories) GetEndpointInventory(_ context.Context, scanID, endpoi
 		}
 		ent := storage.EndpointInventoryEntry{Endpoint: ep}
 		if opt.IncludeSummary {
-			var sum storage.EndpointInventorySummary
-			for _, rec := range m.execRecords {
-				if rec.ScanID != scanID || rec.ScanEndpointID != ep.ID {
-					continue
-				}
-				switch rec.Phase {
-				case engine.PhaseBaseline:
-					sum.BaselineExecutionsRecorded++
-				case engine.PhaseMutated:
-					sum.MutationExecutionsRecorded++
-				}
-			}
-			for _, f := range m.byScan[scanID] {
-				if f.ScanEndpointID == ep.ID {
-					sum.FindingsRecorded++
-				}
-			}
-			ent.Summary = sum
+			ent.Summary = m.endpointInventorySummaryLocked(scanID, ep.ID)
 			ent.Investigation = m.computeEndpointInvestigationLocked(scanID, ep.ID)
 		}
 		return ent, nil
 	}
 	return storage.EndpointInventoryEntry{}, storage.ErrNotFound
+}
+
+func (m *memRepositories) endpointInventorySummaryLocked(scanID, epID string) storage.EndpointInventorySummary {
+	var sum storage.EndpointInventorySummary
+	for _, rec := range m.execRecords {
+		if rec.ScanID != scanID || rec.ScanEndpointID != epID {
+			continue
+		}
+		switch rec.Phase {
+		case engine.PhaseBaseline:
+			sum.BaselineExecutionsRecorded++
+		case engine.PhaseMutated:
+			sum.MutationExecutionsRecorded++
+		}
+	}
+	for _, f := range m.byScan[scanID] {
+		if f.ScanEndpointID == epID {
+			sum.FindingsRecorded++
+		}
+	}
+	return sum
 }
 
 func (m *memRepositories) computeEndpointInvestigationLocked(scanID, scanEndpointID string) *storage.EndpointInvestigationFacts {

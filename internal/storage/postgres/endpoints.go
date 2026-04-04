@@ -277,11 +277,17 @@ func (s *Store) GetEndpointInventory(ctx context.Context, scanID, endpointID str
 	var ent storage.EndpointInventoryEntry
 
 	if opt.IncludeSummary {
-		q := endpointInventoryExecFindingCTEs + `
+		// Correlated subqueries per row: avoids scan-wide execution/finding CTEs when loading one endpoint.
+		q := `
 SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
        se.security_scheme_hints::text, se.request_content_types::text, se.response_content_types::text,
        se.request_body_json, se.created_at,
-       COALESCE(b.n, 0)::int, COALESCE(m.n, 0)::int, COALESCE(f.n, 0)::int,
+       (SELECT COUNT(*)::int FROM execution_records er
+         WHERE er.scan_id = $1 AND er.scan_endpoint_id = se.id AND er.phase = 'baseline'),
+       (SELECT COUNT(*)::int FROM execution_records er
+         WHERE er.scan_id = $1 AND er.scan_endpoint_id = se.id AND er.phase = 'mutated'),
+       (SELECT COUNT(*)::int FROM findings fn
+         WHERE fn.scan_id = $1 AND fn.scan_endpoint_id = se.id),
        (SELECT er.response_status FROM execution_records er
           WHERE er.scan_id = $1 AND er.scan_endpoint_id = se.id AND er.phase = 'baseline'
           ORDER BY er.created_at DESC, er.id DESC LIMIT 1),
@@ -292,9 +298,6 @@ SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
        (SELECT COUNT(*)::int FROM findings fn WHERE fn.scan_id = $1 AND fn.scan_endpoint_id = se.id AND trim(fn.assessment_tier) = 'tentative'),
        (SELECT COUNT(*)::int FROM findings fn WHERE fn.scan_id = $1 AND fn.scan_endpoint_id = se.id AND trim(fn.assessment_tier) = 'incomplete')
 FROM scan_endpoints se
-LEFT JOIN b ON b.scan_endpoint_id = se.id
-LEFT JOIN m ON m.scan_endpoint_id = se.id
-LEFT JOIN f ON f.scan_endpoint_id = se.id
 WHERE se.scan_id = $1 AND se.id = $2`
 		var sum storage.EndpointInventorySummary
 		var latestBase, latestMut *int
