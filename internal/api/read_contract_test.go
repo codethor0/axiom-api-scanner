@@ -40,6 +40,13 @@ var executionListItemRequired = []string{
 	"duration_ms", "created_at", "execution_detail_path",
 }
 
+// findingListItemRequired is GET .../findings items[] (no evidence_summary; no findings_list_path on rows).
+var findingListItemRequired = []string{
+	"id", "scan_id", "rule_id", "category", "severity",
+	"rule_declared_confidence", "assessment_tier", "summary",
+	"evidence_uri", "created_at", "finding_detail_path",
+}
+
 var executionSnapRequestKeys = []string{"method", "url"}
 var executionSnapResponseKeys = []string{"status_code"}
 var executionReqSummaryKeys = []string{"method", "url_short", "header_count", "body_byte_length"}
@@ -467,6 +474,71 @@ func TestContract_executionList_wireKeys(t *testing.T) {
 	}
 	if _, ok := itemObj["response"]; ok {
 		t.Fatal("execution list items must not include response body")
+	}
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(env["meta"], &meta); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"limit", "sort", "order", "has_more"} {
+		if _, ok := meta[k]; !ok {
+			t.Fatalf("meta missing %s", k)
+		}
+	}
+}
+
+func TestContract_findingsList_wireKeys(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ferr := mem.CreateFinding(ctx, storage.CreateFindingInput{
+		ScanID: scan.ID, RuleID: "r1", Category: "api",
+		Severity: findings.SeverityMedium, RuleDeclaredConfidence: "medium", AssessmentTier: "tentative",
+		Summary: "s", Evidence: storage.CreateEvidenceInput{},
+	}); ferr != nil {
+		t.Fatal(ferr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/findings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env map[string]json.RawMessage
+	if jerr := json.Unmarshal(body, &env); jerr != nil {
+		t.Fatal(jerr)
+	}
+	for _, k := range []string{"items", "meta", "scan_navigation"} {
+		if _, ok := env[k]; !ok {
+			t.Fatalf("missing %q in findings list", k)
+		}
+	}
+	var scanNav ScanListNavigation
+	if err := json.Unmarshal(env["scan_navigation"], &scanNav); err != nil {
+		t.Fatal(err)
+	}
+	if scanNav != NewScanListNavigation(scan.ID) {
+		t.Fatalf("scan_navigation %+v want %+v", scanNav, NewScanListNavigation(scan.ID))
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(env["items"], &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(items))
+	}
+	assertJSONKeys(t, items[0], findingListItemRequired)
+	var itemObj map[string]json.RawMessage
+	_ = json.Unmarshal(items[0], &itemObj)
+	if _, ok := itemObj["evidence_summary"]; ok {
+		t.Fatal("findings list items must not include evidence_summary")
 	}
 	var meta map[string]json.RawMessage
 	if err := json.Unmarshal(env["meta"], &meta); err != nil {

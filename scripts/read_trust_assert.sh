@@ -2,6 +2,31 @@
 # Shared jq assertions for read_trust_legend (finding detail) and operator_guide (execution detail).
 # Sourced by scripts/benchmark_findings_local.sh and scripts/e2e_local.sh.
 
+# List envelope scan_navigation must match canonical paths for the scan id (findings + executions list + run status).
+assert_scan_list_navigation_matches_scan() {
+  local list_json="$1"
+  local scan_id="$2"
+  echo "$list_json" | jq -e --arg sid "$scan_id" '
+    (.scan_navigation | type == "object") and
+    (.scan_navigation.findings_list_path == ("/v1/scans/" + $sid + "/findings")) and
+    (.scan_navigation.executions_list_path == ("/v1/scans/" + $sid + "/executions")) and
+    (.scan_navigation.run_status_path == ("/v1/scans/" + $sid + "/run/status"))
+  ' >/dev/null
+}
+
+# List envelope scan_navigation must match GET .../run/status drilldown for the same scan (no path drift).
+assert_scan_list_navigation_matches_drilldown() {
+  local list_json="$1"
+  local run_status_json="$2"
+  local dd
+  dd="$(echo "$run_status_json" | jq .drilldown)"
+  echo "$list_json" | jq -e --argjson dd "$dd" '
+    (.scan_navigation.findings_list_path == $dd.findings_list_path) and
+    (.scan_navigation.executions_list_path == $dd.executions_list_path) and
+    (.scan_navigation.run_status_path == $dd.run_status_path)
+  ' >/dev/null
+}
+
 assert_read_trust_legend_shape() {
   local detail_json="$1"
   echo "$detail_json" | jq -e '

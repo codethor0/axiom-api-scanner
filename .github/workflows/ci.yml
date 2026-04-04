@@ -38,6 +38,9 @@ jobs:
       - name: Migration layout
         run: ./scripts/check_migrations.sh
 
+      - name: Shell syntax (local proof scripts)
+        run: bash -n scripts/read_trust_assert.sh && bash -n scripts/e2e_local.sh && bash -n scripts/benchmark_findings_local.sh
+
       - name: go vet
         run: go vet ./...
 

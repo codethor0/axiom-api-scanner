@@ -174,6 +174,11 @@ if [[ "$N" -lt 1 ]]; then
   echo "benchmark inconclusive: zero findings (check rules, httpbin, import)" >&2
   exit 1
 fi
+assert_scan_list_navigation_matches_scan "$FINDINGS" "$SCAN_ID"
+assert_scan_list_navigation_matches_drilldown "$FINDINGS" "$RUN_STATUS"
+BENCH_EXEC_LIST="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions")"
+assert_scan_list_navigation_matches_scan "$BENCH_EXEC_LIST" "$SCAN_ID"
+assert_scan_list_navigation_matches_drilldown "$BENCH_EXEC_LIST" "$RUN_STATUS"
 
 echo "==> benchmark: $N finding(s) on scan $SCAN_ID"
 echo "$FINDINGS" | jq -r '.items[] | "    finding: \(.rule_id) tier=\(.assessment_tier)"'
@@ -315,6 +320,11 @@ echo "$RUN_RL" | jq -e '.run.findings_recording_status == "complete"' >/dev/null
 echo "$RUN_RL" | jq -e '.rule_family_coverage.rate_limit_header_rotation.exercised == true' >/dev/null
 
 FINDINGS_RL="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/findings")"
+assert_scan_list_navigation_matches_scan "$FINDINGS_RL" "$SCAN_RL"
+assert_scan_list_navigation_matches_drilldown "$FINDINGS_RL" "$RUN_RL"
+BENCH_EXEC_RL="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions")"
+assert_scan_list_navigation_matches_scan "$BENCH_EXEC_RL" "$SCAN_RL"
+assert_scan_list_navigation_matches_drilldown "$BENCH_EXEC_RL" "$RUN_RL"
 expect_count_rl() {
   local rule="$1"
   local want="$2"

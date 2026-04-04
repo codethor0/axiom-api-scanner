@@ -116,6 +116,7 @@ echo "==> E2E: executions list"
 EXEC_LIST="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions")"
 EXEC_N="$(echo "$EXEC_LIST" | jq '.items | length')"
 [[ "$EXEC_N" -ge 1 ]]
+assert_scan_list_navigation_matches_scan "$EXEC_LIST" "$SCAN_ID"
 
 echo "==> E2E: execution detail (first row)"
 EXEC_ID="$(echo "$EXEC_LIST" | jq -er '.items[0].id')"
@@ -145,6 +146,7 @@ echo "$RUN_STATUS_JSON" | jq -e '.run.progression_source == "adhoc"' >/dev/null
 echo "$RUN_STATUS_JSON" | jq -e '.run.findings_recording_status == "complete"' >/dev/null
 echo "$RUN_STATUS_JSON" | jq -e '.run.baseline_run_status == "succeeded"' >/dev/null
 echo "$RUN_STATUS_JSON" | jq -e '.run.mutation_run_status == "succeeded"' >/dev/null
+assert_scan_list_navigation_matches_drilldown "$EXEC_LIST" "$RUN_STATUS_JSON"
 
 echo "==> E2E: endpoint inventory detail + drilldown"
 EP_ID="$(echo "$ENDPOINTS" | jq -er '.items[0].id')"
@@ -159,6 +161,8 @@ echo "$EP_DETAIL" | jq -e '
 echo "==> E2E: findings list"
 FINDINGS_JSON="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings")"
 echo "$FINDINGS_JSON" | jq -e '(.items | type == "array") and (.meta | type == "object")' >/dev/null
+assert_scan_list_navigation_matches_scan "$FINDINGS_JSON" "$SCAN_ID"
+assert_scan_list_navigation_matches_drilldown "$FINDINGS_JSON" "$RUN_STATUS_JSON"
 # May be zero or more depending on rules + matcher outcomes; require we can read the model
 FIRST_LEN="$(echo "$FINDINGS_JSON" | jq '.items | length')"
 
