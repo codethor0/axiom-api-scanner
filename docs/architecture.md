@@ -52,7 +52,7 @@ Typed YAML rules: mutations, matchers (including `status_differs_from_baseline`,
 
 Finding rows store **severity** (impact), **rule_declared_confidence** (YAML `high`/`medium`/`low`), and **assessment_tier** (`confirmed`/`tentative`/`incomplete`) as separate columns—no field overloads. Assessment uses rule severity, declared confidence, weak matcher signals, and HTTP evidence completeness. `evidence_summary` JSON duplicates tier and declared confidence for artifact bundles. Findings are inserted only from the mutation path when diff evaluation passes and is not incomplete; `evidence_artifacts` still hold raw request/body snapshots and a short diff line.
 
-HTTP API lists executions as **execution read** projections: nested `request` / `response` objects, `mutation_rule_id` instead of a generic `rule_id` at the top level, and `response.status_code` naming for clarity.
+HTTP API lists executions as **execution read** projections: nested `request` / `response` objects (redacted as persisted), `execution_kind` mirroring `phase`, `candidate_key` on mutated rows, `mutation_rule_id` instead of a generic `rule_id` at the top level, `response.status_code` naming for clarity, plus **`request_summary` / `response_summary`** (method, shortened URL, header and body byte counts only). Finding list and GET return **finding read** rows: same persisted fields as storage with optional **`evidence_inspection`** (execution linkage, concise matcher lines, diff point count) parsed from `evidence_summary` without changing writes.
 
 ### Shared HTTP helpers (`internal/executil`)
 

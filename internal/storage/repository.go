@@ -91,6 +91,8 @@ type FindingListFilter struct {
 	AssessmentTier         string
 	Severity               string
 	RuleDeclaredConfidence string
+	// RuleID filters by findings.rule_id (exact match).
+	RuleID string
 }
 
 // ExecutionRepository stores HTTP exchange evidence rows.

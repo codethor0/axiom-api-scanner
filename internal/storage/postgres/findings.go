@@ -39,6 +39,11 @@ func (s *Store) ListByScanID(ctx context.Context, scanID string, filter storage.
 	if t := strings.TrimSpace(filter.RuleDeclaredConfidence); t != "" {
 		q += fmt.Sprintf(" AND rule_declared_confidence = $%d", n)
 		args = append(args, strings.ToLower(t))
+		n++
+	}
+	if t := strings.TrimSpace(filter.RuleID); t != "" {
+		q += fmt.Sprintf(" AND rule_id = $%d", n)
+		args = append(args, t)
 	}
 	q += " ORDER BY created_at ASC"
 	rows, err := s.pool.Query(ctx, q, args...)

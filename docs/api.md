@@ -166,37 +166,53 @@ If baseline is missing or not `succeeded`, `result.status` is `failed` with `bas
 
 ### GET /v1/scans/{scanID}/executions
 
-Lists stored HTTP exchanges for the scan, oldest first. Response body is a JSON array of **execution read** objects (stable envelope: `request` and `response` snapshots, `mutation_rule_id` for mutated rows, `phase`, `duration_ms`, `created_at`). Optional query parameters:
+Lists stored HTTP exchanges for the scan, oldest first. Response body is a JSON array of **execution read** objects. **Stable fields** (all preserved for compatibility):
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `scan_id`, `scan_endpoint_id`, `created_at`, `duration_ms` | Identity and timing. |
+| `phase` | `baseline` or `mutated` (persisted execution phase). |
+| `execution_kind` | Same value as `phase`; use either for filtering mentally; both are always set together. |
+| `mutation_rule_id` | Rule id for mutated rows (empty for baseline). |
+| `candidate_key` | Mutation work-item key for **mutated** rows only (resume/dedup); empty for baseline. |
+| `request`, `response` | Full redacted snapshots (`request.url`, `request.body`, header maps, `response.status_code`, `response.body`, etc.). |
+| `request_summary` | Concise view: `method`, `url_short` (length-capped from stored URL), `header_count`, `body_byte_length` (same redacted body as `request.body`). |
+| `response_summary` | Concise view: `status_code`, `content_type`, `header_count`, `body_byte_length` (same body as `response.body`). |
+
+Summaries exist to compare baseline vs mutated rows without re-deriving lengths; they introduce no new secrets beyond the stored snapshots.
+
+Optional query parameters:
 
 - `phase`: `baseline` or `mutated`
+- `execution_kind`: alias for `phase` when `phase` is omitted; if **both** are set they must match or the API returns `400` `invalid_filter`
 - `scan_endpoint_id`: UUID of an imported endpoint
 - `rule_id`: exact `mutation_rule_id` filter (mutated rows only store this when tied to a rule candidate)
 - `response_status`: exact HTTP status code integer (e.g. `200`)
 
 ### GET /v1/scans/{scanID}/executions/{executionID}
 
-Returns one execution read object when it belongs to the scan. `404` when missing or mismatched.
+Returns one execution read object (same shape as list elements) when it belongs to the scan. `404` when missing or mismatched.
 
 ### GET /v1/scans/{scanID}/findings
 
-Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each row uses **non-overlapping** fields:
+Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each element is a **finding read**: all stored columns (`id`, `scan_id`, `rule_id`, `category`, `severity`, `rule_declared_confidence`, `assessment_tier`, `summary`, `evidence_summary`, `evidence_uri`, `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, `created_at`) plus optional **`evidence_inspection`** when there is something to show:
 
-- `severity`: impact bucket from the rule (not the same as assessment tier).
-- `rule_declared_confidence`: author-declared signal from rule YAML (`high`, `medium`, `low`).
-- `assessment_tier`: post-run tier (`confirmed`, `tentative`, `incomplete`) from evidence and matcher strength rules.
-- `evidence_summary`: structured JSON (schema version 1) with matcher outcomes, diff points, and both `assessment_tier` and `rule_declared_confidence` duplicated for bundle consumers.
+- **`evidence_inspection`**: `baseline_execution_id`, `mutated_execution_id` (copied from columns, with fallback from parsed `evidence_summary` when missing), **`matcher_outcomes`** as stable `{index, kind, passed}` rows (no per-matcher prose), and **`diff_point_count`** from stored diff points. Omitted when ids, outcomes, and diff count are all empty. Write paths and stored blobs are unchanged; this block is read-only ergonomics.
+
+**Non-overlapping semantics:** `severity` is impact; `assessment_tier` is post-run confidence in the signal; `rule_declared_confidence` is YAML authoring quality.
 
 Optional query parameters (all exact match, ANDed):
 
 - `assessment_tier`
 - `severity`
 - `rule_declared_confidence`
+- `rule_id` (exact `findings.rule_id`)
 
 ## Findings
 
 ### GET /v1/findings/{findingID}
 
-Returns one finding row with the same fields as the list endpoint (`severity`, `rule_declared_confidence`, `assessment_tier`, `summary`, `evidence_summary`, execution linkage ids).
+Returns one **finding read** object (same JSON shape as list elements), including `evidence_inspection` when applicable.
 
 Rule load failures (`GET /v1/rules`) return `rule_load_failed` with a **numbered, multi-line** validation message when YAML fails validation.
 

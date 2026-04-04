@@ -369,8 +369,17 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
 		return
 	}
+	phase := strings.TrimSpace(r.URL.Query().Get("phase"))
+	ek := strings.TrimSpace(r.URL.Query().Get("execution_kind"))
+	if phase != "" && ek != "" && phase != ek {
+		writeAPIError(w, http.StatusBadRequest, "invalid_filter", "phase and execution_kind must match when both are set")
+		return
+	}
+	if phase == "" {
+		phase = ek
+	}
 	filter := storage.ExecutionListFilter{
-		Phase:          strings.TrimSpace(r.URL.Query().Get("phase")),
+		Phase:          phase,
 		ScanEndpointID: strings.TrimSpace(r.URL.Query().Get("scan_endpoint_id")),
 		RuleID:         strings.TrimSpace(r.URL.Query().Get("rule_id")),
 	}
@@ -501,6 +510,7 @@ func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
 		AssessmentTier:         strings.TrimSpace(r.URL.Query().Get("assessment_tier")),
 		Severity:               strings.TrimSpace(r.URL.Query().Get("severity")),
 		RuleDeclaredConfidence: strings.TrimSpace(r.URL.Query().Get("rule_declared_confidence")),
+		RuleID:                 strings.TrimSpace(r.URL.Query().Get("rule_id")),
 	}
 	list, err := h.Findings.ListByScanID(r.Context(), id, filter)
 	if err != nil {
@@ -510,7 +520,11 @@ func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []findings.Finding{}
 	}
-	writeJSON(w, http.StatusOK, list)
+	out := make([]FindingRead, len(list))
+	for i := range list {
+		out[i] = NewFindingRead(list[i])
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) getFinding(w http.ResponseWriter, r *http.Request) {
@@ -532,7 +546,7 @@ func (h *Handler) getFinding(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load finding")
 		return
 	}
-	writeJSON(w, http.StatusOK, f)
+	writeJSON(w, http.StatusOK, NewFindingRead(f))
 }
 
 func (h *Handler) getFindingEvidence(w http.ResponseWriter, r *http.Request) {

@@ -405,6 +405,9 @@ func (m *memRepositories) ListByScanID(_ context.Context, scanID string, filter 
 		if filter.RuleDeclaredConfidence != "" && f.RuleDeclaredConfidence != filter.RuleDeclaredConfidence {
 			continue
 		}
+		if filter.RuleID != "" && f.RuleID != filter.RuleID {
+			continue
+		}
 		out = append(out, f)
 	}
 	return out, nil
