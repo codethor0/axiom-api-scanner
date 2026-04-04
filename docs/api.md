@@ -1,5 +1,7 @@
 # HTTP API (control plane)
 
+**Scope and positioning:** [comparison.md](comparison.md) (V1 families, proof expectations, honest gaps vs broader DAST tools).
+
 Base path: `/v1`
 
 All successful JSON responses use explicit structs. Errors use this envelope:

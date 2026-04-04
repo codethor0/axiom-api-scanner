@@ -1,4 +1,4 @@
-.PHONY: build test fmt vet lint check-migrations workflow-lint ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth benchmark-findings-local
+.PHONY: build test fmt vet lint check-migrations workflow-lint ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth benchmark-findings-local release-candidate-proof
 
 # CLI migrate must match github.com/golang-migrate/migrate/v4 used by internal/dbmigrate.
 MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
@@ -65,6 +65,15 @@ benchmark-findings-local:
 	@echo "benchmark-findings-local: needs Docker; default localhost ports 54334 18080 18081 8080 — override via env if busy (docs/testing.md)."
 	chmod +x ./scripts/benchmark_findings_local.sh
 	./scripts/benchmark_findings_local.sh
+
+# Local release-candidate proof: static checks + unit tests + Docker e2e + benchmark.
+# Requires: Docker, curl, jq, Go. Postgres integration in go test is optional unless AXIOM_TEST_DATABASE_URL is set (see docs/testing.md).
+release-candidate-proof: check-migrations vet lint
+	@echo "release-candidate-proof: go test (set AXIOM_TEST_DATABASE_URL for postgres integration tests)"
+	AXIOM_TEST_MIGRATIONS_DIR="$(CURDIR)/migrations" go test ./... -count=1
+	$(MAKE) e2e-local
+	$(MAKE) benchmark-findings-local
+	@echo "release-candidate-proof: OK (see also CHANGELOG.md and docs/comparison.md)."
 
 # OWASP crAPI in Docker + Axiom (heavy images; first run clones upstream repo). See docs/testing.md.
 e2e-crapi:

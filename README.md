@@ -2,37 +2,47 @@
 
 Axiom is a safe-by-default, evidence-driven API scanner for **authorized** security testing. It targets API logic flaws (for example broken object level authorization, mass assignment, selected authorization bypass patterns, and controlled rate-limit checks) with reproducible proof artifacts, bounded scope, and explicit safety modes.
 
+**Release candidate:** **`v0.1.0-rc.1`** is documented in [CHANGELOG.md](CHANGELOG.md). Positioning versus broader tools is in [docs/comparison.md](docs/comparison.md). **License:** [LICENSE](LICENSE) (MIT).
+
 ## What Axiom is
 
 - A disciplined rule engine with YAML-defined checks, schema validation, and citations.
-- A control-plane HTTP API plus a worker entrypoint for asynchronous execution (worker is scaffold-only today). Read APIs return explicit finding fields (`severity`, `rule_declared_confidence`, `assessment_tier`) and nested execution snapshots for list/detail execution routes—see [docs/api.md](docs/api.md).
-- An OpenAPI 3.x ingestion path for endpoint discovery (first-class input format for V1).
+- A control-plane HTTP API plus a worker entrypoint for asynchronous execution (worker is scaffold-only today). Read APIs return explicit finding fields (`severity`, `rule_declared_confidence`, `assessment_tier`) and list/detail execution routes. See [docs/api.md](docs/api.md).
+- **OpenAPI 3.x** ingestion for endpoint discovery (first-class input for V1).
 
 ## What Axiom is not
 
 - Not a license to test systems without authorization.
 - Not an unrestricted fuzzing or exploit framework.
 - Not a replacement for code review, design review, or broader secure SDLC practices.
+- Not yet a full “every format, every workflow” DAST replacement (see [docs/comparison.md](docs/comparison.md)).
 
 ## Safety model (summary)
 
-Default execution posture is **passive** or **safe**. Destructive or high-impact rules must be labeled, classified, and **disabled unless explicitly enabled**. Scope enforcement, audit logging, and evidence capture are core requirements, not optional plugins. See [docs/safety-model.md](docs/safety-model.md).
+Default execution posture is **passive** or **safe**. Destructive or high-impact rules must be labeled, classified, and **disabled unless explicitly enabled**. See [docs/safety-model.md](docs/safety-model.md).
 
-## Quickstart
+## Quickstart (API on your Postgres)
 
-Requirements: Go as specified in `go.mod` and a PostgreSQL database.
+**Assumptions (no surprises):**
 
-Repository: [github.com/codethor0/axiom-api-scanner](https://github.com/codethor0/axiom-api-scanner) (`git clone https://github.com/codethor0/axiom-api-scanner.git`).
+| Need | Why |
+| --- | --- |
+| **Repository root** as current directory | Migrations and `AXIOM_RULES_DIR` resolve relative to here. |
+| **Go** matching `go.mod` | Build the API binary. |
+| **PostgreSQL** you are allowed to migrate | The API runs migrations on startup. |
+| **jq** (optional) | Examples below pipe JSON through `jq`. |
 
-From the repository root (so migrations resolve), set `DATABASE_URL` and start the API (migrations run on startup):
+**Clone and build:**
 
 ```text
+git clone https://github.com/codethor0/axiom-api-scanner.git
+cd axiom-api-scanner
 export DATABASE_URL='postgres://user:pass@localhost:5432/axiom?sslmode=disable'
 go build -o bin/axiom-api ./cmd/api
 AXIOM_HTTP_ADDR=":8080" AXIOM_RULES_DIR="./rules" DATABASE_URL="$DATABASE_URL" ./bin/axiom-api
 ```
 
-Create a scan (returns a real UUID and database timestamps):
+**Create a scan** (returns a real UUID):
 
 ```text
 curl -s -X POST localhost:8080/v1/scans \
@@ -40,55 +50,77 @@ curl -s -X POST localhost:8080/v1/scans \
   -d '{"target_label":"staging","safety_mode":"safe","allow_full_execution":false}' | jq .
 ```
 
-List loaded rules (from `AXIOM_RULES_DIR`):
+**List rules** loaded from `./rules`:
 
 ```text
 curl -s localhost:8080/v1/rules | jq .
 ```
 
-Validate an OpenAPI document:
+**Validate OpenAPI** (replace path with your file):
 
 ```text
-curl -s -X POST localhost:8080/v1/specs/openapi/validate --data-binary @spec.yaml
+curl -s -X POST localhost:8080/v1/specs/openapi/validate --data-binary @path/to/spec.yaml
 ```
 
-Import endpoints from OpenAPI (validation + extraction):
+**Import OpenAPI into a scan** (use `scan_id` from create; body is **raw** OpenAPI YAML or JSON, not a JSON wrapper):
 
 ```text
-curl -s -X POST localhost:8080/v1/specs/openapi/import --data-binary @spec.yaml | jq .
+curl -s -X POST "localhost:8080/v1/scans/{scan_id}/specs/openapi" \
+  --data-binary @path/to/spec.yaml | jq .
 ```
 
-After a scan has imported endpoints and a `base_url`, you can run baseline and mutations in one synchronous orchestrated pass with `POST /v1/scans/{scan_id}/run` and body `{"action":"start"}` (details and resume/cancel in [docs/api.md](docs/api.md)).
+**Orchestrated run** after `base_url` and endpoints exist: `POST /v1/scans/{scan_id}/run` with body `{"action":"start"}`. Full control and read paths: [docs/api.md](docs/api.md).
 
-**Continuous integration:** push and pull requests on `main` run GitHub Actions: migration layout checks, **`bash -n`** on the local proof scripts (`scripts/read_trust_assert.sh`, `scripts/e2e_local.sh`, `scripts/benchmark_findings_local.sh`), `go vet`, `golangci-lint`, and `go test ./...` against a PostgreSQL 16 service (sets `AXIOM_TEST_DATABASE_URL` so `internal/storage/postgres` integration tests run). **`bash -n`** checks shell syntax only, not end-to-end behavior. See [docs/testing.md](docs/testing.md#ci-vs-local) and the **Proof matrix** there.
+**Repository:** [github.com/codethor0/axiom-api-scanner](https://github.com/codethor0/axiom-api-scanner).
 
-**Local validation:** with Docker available, run from the **repository root** so `./rules`, `./migrations`, and `deploy/e2e/docker-compose.yml` resolve.
+## Reproducible proof (evaluators and release candidates)
 
-- `make e2e-local` — Postgres + httpbin, ad-hoc baseline/mutations, findings read paths, orchestrator smoke (**[docs/testing.md](docs/testing.md#local-docker-end-to-end-v1)**).
-- `make benchmark-findings-local` — same stack plus a **local nginx** rate-limit stub; asserts builtin rule tiers, **`interpretation_hints`**, harness **`bench_*`** codes, and prints a closing **`bench_summary_matrix`** (`outcome_*` + `rule_family_coverage` keys per rule and scan; see [docs/testing.md](docs/testing.md#finding-quality-benchmark-local-httpbin-and-nginx-rate-stub)). Default bind ports **54334** (Postgres), **18080** (httpbin), **18081** (stub), **8080** (API); set **`AXIOM_HTTP_ADDR`**, **`AXIOM_URL`**, **`HTTPBIN_URL`**, **`RATE_STUB_URL`**, **`DATABASE_URL`** if yours conflict. **GitHub Actions does not run** these Docker scripts ([workflow](.github/workflows/ci.yml)); use the **Proof matrix** in [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment) to compare CI vs local coverage.
+**CI** (on GitHub): migration layout, `bash -n` on local proof scripts, `go vet`, `golangci-lint`, `go test ./...` with Postgres. Details: [docs/testing.md](docs/testing.md#ci-vs-local).
 
-`make e2e-crapi` runs the same class of checks against **[OWASP crAPI](https://github.com/OWASP/crAPI)** in Docker (clone under `.cache/crapi`). `make e2e-crapi-auth` adds an API-only signup/login JWT and re-runs baseline/mutations with `auth_headers`. See [docs/testing.md](docs/testing.md).
+**Local Docker** (requires **Docker**, **curl**, **jq**, free default ports **54334**, **18080**, **18081**, **8080** unless you override env vars documented in [docs/testing.md](docs/testing.md)):
+
+```text
+make e2e-local
+make benchmark-findings-local
+```
+
+**One-shot release-candidate recipe** (static checks + unit tests + both Docker flows):
+
+```text
+make release-candidate-proof
+```
+
+**Postgres integration tests** (optional, recommended before you tag a release): set `AXIOM_TEST_DATABASE_URL` to a **dedicated** database; then `go test ./internal/storage/postgres/... -count=1 -v` or `make ci` — see [docs/testing.md](docs/testing.md).
+
+**Note:** `bash -n` in CI checks **shell syntax only**, not runtime behavior of Docker scripts.
+
+## Continuous integration
+
+Push and pull requests on `main` run GitHub Actions per [.github/workflows/ci.yml](.github/workflows/ci.yml). **Proof matrix** (what runs where): [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment).
 
 ## Documentation
 
 | Document | Purpose |
 | --- | --- |
+| [docs/comparison.md](docs/comparison.md) | Positioning vs broader tools; V1 families; proof expectations |
+| [CHANGELOG.md](CHANGELOG.md) | Release candidate and version notes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute and report issues |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
+| [ROADMAP.md](ROADMAP.md) | Near-term and non-goals |
 | [docs/architecture.md](docs/architecture.md) | Control plane, engine, evidence, storage |
-| [docs/rule-authoring.md](docs/rule-authoring.md) | Rule DSL and examples |
-| [docs/safety-model.md](docs/safety-model.md) | Safety modes and enforcement |
-| [docs/testing.md](docs/testing.md) | Test strategy |
-| [docs/development.md](docs/development.md) | Local development workflow |
-| [docs/api.md](docs/api.md) | REST API overview |
+| [docs/api.md](docs/api.md) | REST API |
+| [docs/rule-authoring.md](docs/rule-authoring.md) | Rule DSL |
+| [docs/safety-model.md](docs/safety-model.md) | Safety modes |
+| [docs/testing.md](docs/testing.md) | Tests and local Docker flows |
+| [docs/development.md](docs/development.md) | Local development |
 
-## Roadmap (V1 focus)
+## Optional stacks
 
-- Planner and executor for authenticated baseline and mutated requests.
-- Diff and finding pipeline with required evidence fields.
-- Rule packs: IDOR path and query swaps, mass assignment, selected 403 or path normalization bypass checks, controlled rate-limit header rotation after baseline detection.
+- `make e2e-crapi` / `make e2e-crapi-auth` — OWASP crAPI in Docker (heavy); [docs/testing.md](docs/testing.md).
 
 ## Contributing
 
-Use small, reviewable changes. Every behavior change should include tests and documentation updates in the same change. Do not commit prompt transcripts or scratch artifacts.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Responsible use
 

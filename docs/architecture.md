@@ -1,5 +1,7 @@
 # Architecture
 
+**Positioning vs broader API security tools:** [comparison.md](comparison.md).
+
 This document describes the intended shape of Axiom at V1. The repository includes PostgreSQL-backed scans, imported OpenAPI endpoints per scan, baseline HTTP execution, sequential mutation execution for supported V1 rule families, a narrow baseline-vs-mutated diff engine, and finding creation when matchers pass with complete evidence. Threat-class language in rules and categories aligns with the [OWASP API Security Top 10](https://owasp.org/API-Security/) (for example API1 BOLA/IDOR and mass assignment) as a roadmap baseline, without claiming full coverage.
 
 ## Components
