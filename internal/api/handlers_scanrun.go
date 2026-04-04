@@ -40,6 +40,7 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
 		return
 	}
+	nEp := len(endpoints)
 	secEndpoints := 0
 	for _, ep := range endpoints {
 		if len(ep.SecuritySchemeHints) > 0 {
@@ -57,10 +58,20 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 	if authConfigured && secEndpoints > 0 {
 		cov.Hints = append(cov.Hints, "auth_headers are present; outbound baseline and mutation requests will include them (sensitive values are never returned by this API)")
 	}
-	if secEndpoints == 0 && !authConfigured && len(endpoints) > 0 {
+	if secEndpoints == 0 && !authConfigured && nEp > 0 {
 		cov.Hints = append(cov.Hints, "no operations in the imported spec declare security schemes; auth may still be required by the target for routes not reflected in OpenAPI")
 	}
-	last := lastRunError(scan)
+
+	orchErr := orchestratorErrorOnly(scan)
+	runState := ScanRunState{
+		Phase:             string(scan.RunPhase),
+		OrchestratorError: orchErr,
+		BaselineRunStatus: strings.TrimSpace(scan.BaselineRunStatus),
+		BaselineRunError:  subBaselineErrorOnly(scan),
+		MutationRunStatus: strings.TrimSpace(scan.MutationRunStatus),
+		MutationRunError:  subMutationErrorOnly(scan),
+	}
+
 	out := ScanRunStatusResponse{
 		Scan: ScanRunScanSummary{
 			ID:          scan.ID,
@@ -68,43 +79,82 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 			TargetLabel: scan.TargetLabel,
 			SafetyMode:  scan.SafetyMode,
 		},
-		Run: ScanRunState{
-			Phase:             string(scan.RunPhase),
-			BaselineRunStatus: strings.TrimSpace(scan.BaselineRunStatus),
-			BaselineRunError:  strings.TrimSpace(scan.BaselineRunError),
-			MutationRunStatus: strings.TrimSpace(scan.MutationRunStatus),
-			MutationRunError:  strings.TrimSpace(scan.MutationRunError),
-			LastError:         last,
-		},
+		Run: runState,
 		Progress: ScanRunProgress{
-			EndpointsDiscovered:         len(endpoints),
+			EndpointsDiscovered:         nEp,
 			BaselineEndpointsTotal:      scan.BaselineEndpointsTotal,
 			BaselineExecutionsCompleted: scan.BaselineEndpointsDone,
 			MutationCandidatesTotal:     scan.MutationCandidatesTotal,
 			MutationExecutionsCompleted: scan.MutationCandidatesDone,
 			FindingsCreated:             scan.FindingsCount,
 		},
-		Coverage:   cov,
-		ScanID:     scan.ID,
-		Phase:      string(scan.RunPhase),
-		ScanStatus: string(scan.Status),
-		LastError:  last,
+		Coverage:    cov,
+		Diagnostics: buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured),
+		Compatibility: ScanRunCompatibility{
+			ScanID:     scan.ID,
+			Phase:      string(scan.RunPhase),
+			ScanStatus: string(scan.Status),
+			LastError:  orchErr,
+		},
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-// lastRunError prefers orchestrator run_error when failed, then surfaced baseline/mutation errors when run or subordinate status failed.
-func lastRunError(scan engine.Scan) string {
-	if scan.RunPhase == engine.PhaseFailed && strings.TrimSpace(scan.RunError) != "" {
-		return strings.TrimSpace(scan.RunError)
-	}
-	if strings.TrimSpace(scan.BaselineRunError) != "" && (scan.BaselineRunStatus == "failed" || scan.RunPhase == engine.PhaseFailed) {
-		return strings.TrimSpace(scan.BaselineRunError)
-	}
-	if strings.TrimSpace(scan.MutationRunError) != "" && (scan.MutationRunStatus == "failed" || scan.RunPhase == engine.PhaseFailed) {
-		return strings.TrimSpace(scan.MutationRunError)
+func orchestratorErrorOnly(scan engine.Scan) string {
+	if scan.RunPhase != engine.PhaseFailed {
+		return ""
 	}
 	return strings.TrimSpace(scan.RunError)
+}
+
+// subBaselineErrorOnly returns baseline_run_error only when baseline_run_status is failed (avoids stale text after a later success).
+func subBaselineErrorOnly(scan engine.Scan) string {
+	if strings.TrimSpace(scan.BaselineRunStatus) != "failed" {
+		return ""
+	}
+	return strings.TrimSpace(scan.BaselineRunError)
+}
+
+// subMutationErrorOnly returns mutation_run_error only when mutation_run_status is failed.
+func subMutationErrorOnly(scan engine.Scan) string {
+	if strings.TrimSpace(scan.MutationRunStatus) != "failed" {
+		return ""
+	}
+	return strings.TrimSpace(scan.MutationRunError)
+}
+
+func buildScanRunDiagnostics(scan engine.Scan, endpointsN, secEndpoints int, authConfigured bool) ScanRunDiagnostics {
+	var d ScanRunDiagnostics
+	if endpointsN == 0 {
+		d.BlockedDetail = append(d.BlockedDetail, ScanRunDiagnosticLine{
+			Code:   "no_imported_endpoints",
+			Detail: "no scan_endpoints rows; import OpenAPI before baseline or orchestrated run",
+		})
+	}
+	if secEndpoints > 0 && !authConfigured {
+		d.BlockedDetail = append(d.BlockedDetail, ScanRunDiagnosticLine{
+			Code:   "declared_security_without_auth",
+			Detail: strconv.Itoa(secEndpoints) + " imported operation(s) declare security schemes; scan has no auth_headers",
+		})
+	}
+	if endpointsN > 0 && scan.BaselineEndpointsTotal == 0 && scan.RunPhase == engine.PhasePlanned {
+		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
+			Code:   "baseline_not_recorded",
+			Detail: "run_phase is planned and baseline_totals on scan row are zero; baseline has not written progress yet",
+		})
+	}
+	if scan.BaselineRunStatus == "succeeded" && scan.MutationRunStatus == "succeeded" && scan.MutationCandidatesTotal == 0 &&
+		(scan.RunPhase == engine.PhaseFindingsComplete || scan.RunPhase == engine.PhaseMutationComplete) {
+		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
+			Code:   "zero_mutation_candidates",
+			Detail: "mutation pass completed with candidates_total 0 (no eligible rule/work items for imported endpoints in V1)",
+		})
+	}
+	if scan.RunPhase == engine.PhaseFailed {
+		d.PhaseFailedNextStep = "POST /v1/scans/{scan_id}/run with body {\"action\":\"resume\"} after addressing orchestrator_error or sub-run errors (sync-only; request blocks until finish)"
+		d.ResumeRecommended = true
+	}
+	return d
 }
 
 // scanRunControl starts, resumes, or cancels orchestrated execution (synchronous).

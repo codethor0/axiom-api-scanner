@@ -49,20 +49,23 @@ Transitions scan lifecycle state only (`start`, `pause`, `cancel`). Baseline exe
 
 ### GET /v1/scans/{scanID}/run/status
 
-Operator read model for orchestration. Returns `200` with a stable JSON object. Fields are derived from persisted scan and endpoint rows (no percentage estimates).
+Operator read model for orchestration. Returns `200` with one JSON object. **Canonical** groups (use these for new integrations):
 
-| Group | Fields |
+| Group | Role |
 | --- | --- |
-| `scan` | `id`, `status` (lifecycle), `target_label`, `safety_mode` |
-| `run` | `phase` (`run_phase`), `baseline_run_status`, `baseline_run_error`, `mutation_run_status`, `mutation_run_error`, `last_error` (primary operator message when failed) |
-| `progress` | `endpoints_discovered` (imported endpoint count), `baseline_endpoints_total`, `baseline_executions_completed`, `mutation_candidates_total`, `mutation_executions_completed`, `findings_created` (all from the scan row / import) |
-| `coverage` | `auth_headers_configured`, `endpoints_declaring_security`, `hints` (no secret values) |
+| `scan` | Lifecycle `status`, `target_label`, `safety_mode`, `id` (no credentials). |
+| `run` | `phase` (persisted `run_phase`); `orchestrator_error` (pipeline stop reason **only** when `phase` is `failed`, from `run_error`); `baseline_run_status`, `baseline_run_error` (sub-run message **only** when baseline status is `failed`); `mutation_run_status`, `mutation_run_error` (sub-run message **only** when mutation status is `failed`). |
+| `progress` | Counters from the scan row plus `endpoints_discovered` from imported endpoint count (no percentages or estimates). |
+| `coverage` | Auth/security hints (no secrets). |
+| `diagnostics` | Grounded `blocked_detail` / `skipped_detail` entries (`code` + optional `detail`) derived only from persisted scan columns and endpoint inventory; `phase_failed_next_step` and `resume_recommended` when `phase` is `failed`. |
 
-**Backward-compatible mirrors:** `scan_id`, `phase`, `scan_status`, and `last_error` duplicate `scan.id`, `run.phase`, `scan.status`, and `run.last_error` for existing clients.
+**Compatibility (non-canonical):** the `compatibility` object duplicates `scan.id` -> `scan_id`, `run.phase` -> `phase`, `scan.status` -> `scan_status`, and `run.orchestrator_error` -> `last_error` for older clients. **`compatibility.last_error` is only the orchestrator failure** (same as `run.orchestrator_error`), not baseline/mutation sub-messages, so it does not overlap those fields.
 
-**Phase semantics:** Exactly one `run_phase` is stored at a time. Allowed values: `planned`, `baseline_running`, `baseline_complete`, `mutation_running`, `mutation_complete`, `findings_complete`, `failed`, `canceled`. Illegal transitions return `409` from `POST .../run` when attempted by the orchestrator.
+**Failure semantics:** When `phase` is `failed`, read `run.orchestrator_error` first. If baseline or mutation sub-status is `failed`, the corresponding `*_run_error` holds that runner’s message. When baseline status is **not** `failed`, `baseline_run_error` is omitted/empty in the response even if a stale string remains in storage (same for mutation). This keeps “current sub-run failure” unambiguous.
 
-Per-endpoint skip reasons for baseline appear under **`POST .../executions/baseline`** `result.skipped_detail`, not in this status object.
+**Diagnostics codes (may appear; all factual):** `no_imported_endpoints`, `declared_security_without_auth`, `baseline_not_recorded`, `zero_mutation_candidates` — see unit tests for exact trigger conditions. No speculative reasons are invented.
+
+**Phase semantics:** Exactly one `run_phase` at a time. Values: `planned`, `baseline_running`, `baseline_complete`, `mutation_running`, `mutation_complete`, `findings_complete`, `failed`, `canceled`. Illegal transitions return `409` from `POST .../run`. Per-endpoint baseline skip reasons remain on **`POST .../executions/baseline`** `result.skipped_detail`, not in this status object.
 
 ### POST /v1/scans/{scanID}/run
 

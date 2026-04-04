@@ -130,11 +130,11 @@ curl -sf -X POST "$AXIOM_URL/v1/scans/$OScan/specs/openapi" \
 
 curl -sf -X POST "$AXIOM_URL/v1/scans/$OScan/run" \
   -H 'Content-Type: application/json' \
-  -d '{"action":"start"}' | jq -e '.phase == "findings_complete"' >/dev/null
+  -d '{"action":"start"}' | jq -e '.run.phase == "findings_complete"' >/dev/null
 
 curl -sf -X POST "$AXIOM_URL/v1/scans/$OScan/run" \
   -H 'Content-Type: application/json' \
-  -d '{"action":"resume"}' | jq -e '.phase == "findings_complete"' >/dev/null
+  -d '{"action":"resume"}' | jq -e '.run.phase == "findings_complete"' >/dev/null
 
 echo "OK: crAPI-backed e2e passed (findings=$N_FIND). Primary scan id: $SCAN_ID"
 

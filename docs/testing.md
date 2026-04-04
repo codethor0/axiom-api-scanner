@@ -39,7 +39,7 @@ make ci-unit
 | Layer | Scope |
 | --- | --- |
 | Unit | Rule validation, OpenAPI `ExtractEndpointSpecs`, path template helper, V1 planner, mutation generator, `internal/diff/v1` matchers, `internal/executil` redaction, mutation `BuildRequest` scope checks, scan run phase graph and forced baseline transition (`internal/engine`), orchestrator dependency guards, resume without baseline HTTP when baseline already succeeded (`internal/orchestrator`), mutation resume/dedupe (`runner_verify_test`). |
-| Handler | Scan create, control, OpenAPI, PATCH scan, executions list/detail, baseline/mutations contract cases, scan run status shape/cancel and mem dedupe assertions using `httptest` and in-memory repository fakes (no database). |
+| Handler | Scan create, control, OpenAPI, PATCH scan, executions list/detail, baseline/mutations contract cases, scan run status (canonical vs `compatibility`, failure field semantics, diagnostics codes, cancel) and mem dedupe assertions using `httptest` and in-memory repository fakes (no database). |
 | Baseline | `internal/executor/baseline/runner_test` uses `httptest` plus in-memory store; performs one GET baseline. |
 | Integration | `internal/storage/postgres` when `AXIOM_TEST_DATABASE_URL` is set (runs `dbmigrate.Up` from `AXIOM_TEST_MIGRATIONS_DIR` or repo-root `migrations/`, through `000007_scan_run_orchestration` and earlier). |
 | End-to-end | `make e2e-local` (httpbin plumbing) and `make e2e-crapi` (OWASP crAPI + same V1 checks); see **Local Docker end-to-end** below. |
@@ -106,6 +106,8 @@ make lint
 ```
 
 ## Local Docker end-to-end (V1)
+
+E2E scripts use **canonical** run payloads in `jq` checks (for example `.run.phase == "findings_complete"` on `POST .../run` responses). Legacy mirrors live under `.compatibility` if needed.
 
 **Goal:** Prove the supported safe V1 path against **local** targets only (no unsolicited scans of third-party APIs).
 

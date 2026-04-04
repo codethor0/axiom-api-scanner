@@ -47,14 +47,39 @@ type ScanRunScanSummary struct {
 	SafetyMode  string `json:"safety_mode"`
 }
 
-// ScanRunState is the persisted orchestration snapshot (mutually exclusive run_phase; runner status lines from storage).
+// ScanRunState is the canonical persisted orchestration snapshot (one run_phase; runner status lines from storage).
+// OrchestratorError is the scan row run_error when run_phase is failed only (pipeline stop reason).
+// BaselineRunError / MutationRunError are the last sub-runner messages only when that sub-run status is failed (not duplicated into OrchestratorError here).
 type ScanRunState struct {
-	Phase               string `json:"phase"`
-	BaselineRunStatus   string `json:"baseline_run_status,omitempty"`
-	BaselineRunError    string `json:"baseline_run_error,omitempty"`
-	MutationRunStatus   string `json:"mutation_run_status,omitempty"`
-	MutationRunError    string `json:"mutation_run_error,omitempty"`
-	LastError           string `json:"last_error,omitempty"`
+	Phase             string `json:"phase"`
+	OrchestratorError string `json:"orchestrator_error,omitempty"`
+	BaselineRunStatus string `json:"baseline_run_status,omitempty"`
+	BaselineRunError  string `json:"baseline_run_error,omitempty"`
+	MutationRunStatus string `json:"mutation_run_status,omitempty"`
+	MutationRunError  string `json:"mutation_run_error,omitempty"`
+}
+
+// ScanRunDiagnosticLine is one grounded operator line (code stable for automation; detail human-readable).
+type ScanRunDiagnosticLine struct {
+	Code   string `json:"code"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// ScanRunDiagnostics lists narrow, factual skip/block hints derived only from persisted scan columns and endpoint inventory.
+type ScanRunDiagnostics struct {
+	BlockedDetail       []ScanRunDiagnosticLine `json:"blocked_detail,omitempty"`
+	SkippedDetail       []ScanRunDiagnosticLine `json:"skipped_detail,omitempty"`
+	PhaseFailedNextStep string                  `json:"phase_failed_next_step,omitempty"`
+	ResumeRecommended   bool                    `json:"resume_recommended,omitempty"`
+}
+
+// ScanRunCompatibility mirrors a subset of canonical fields for older JSON clients. Prefer scan, run, progress, coverage.
+// LastError matches OrchestratorError only (never baseline/mutation sub-messages).
+type ScanRunCompatibility struct {
+	ScanID     string `json:"scan_id"`
+	Phase      string `json:"phase"`
+	ScanStatus string `json:"scan_status"`
+	LastError  string `json:"last_error,omitempty"`
 }
 
 // ScanRunCoverage surfaces operator hints for partial or auth-dependent coverage (no secrets).
@@ -64,17 +89,15 @@ type ScanRunCoverage struct {
 	Hints                      []string `json:"hints,omitempty"`
 }
 
-// ScanRunStatusResponse groups scan metadata, run state, coverage, and progress counters.
-// Top-level scan_id, phase, scan_status, and last_error mirror scan.* and run.* for stable JSON clients.
+// ScanRunStatusResponse canonical JSON shape for GET/POST .../run/status responses.
+// Canonical groups: scan, run, progress, coverage, diagnostics. compatibility is the only non-canonical group (explicit mirror).
 type ScanRunStatusResponse struct {
-	Scan     ScanRunScanSummary `json:"scan"`
-	Run      ScanRunState       `json:"run"`
-	Progress ScanRunProgress    `json:"progress"`
-	Coverage ScanRunCoverage    `json:"coverage"`
-	ScanID     string          `json:"scan_id"`
-	Phase      string          `json:"phase"`
-	ScanStatus string          `json:"scan_status"`
-	LastError  string          `json:"last_error,omitempty"`
+	Scan          ScanRunScanSummary   `json:"scan"`
+	Run           ScanRunState         `json:"run"`
+	Progress      ScanRunProgress      `json:"progress"`
+	Coverage      ScanRunCoverage      `json:"coverage"`
+	Diagnostics   ScanRunDiagnostics   `json:"diagnostics"`
+	Compatibility ScanRunCompatibility `json:"compatibility"`
 }
 
 // ScanRunControlRequest starts, resumes, or cancels a synchronous scan run.

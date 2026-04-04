@@ -133,12 +133,12 @@ curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN2/specs/openapi" \
 RUN1="$(curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN2/run" \
   -H 'Content-Type: application/json' \
   -d '{"action":"start"}')"
-echo "$RUN1" | jq -e '.phase == "findings_complete"' >/dev/null
-PHASE1="$(echo "$RUN1" | jq -r .phase)"
+echo "$RUN1" | jq -e '.run.phase == "findings_complete"' >/dev/null
+PHASE1="$(echo "$RUN1" | jq -r .run.phase)"
 RUN2="$(curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN2/run" \
   -H 'Content-Type: application/json' \
   -d '{"action":"resume"}')"
-PHASE2="$(echo "$RUN2" | jq -r .phase)"
+PHASE2="$(echo "$RUN2" | jq -r .run.phase)"
 [[ "$PHASE1" == "$PHASE2" ]] || { echo "resume changed terminal phase unexpectedly" >&2; exit 1; }
 
 if [[ "$SKIP_CRAPI" != "1" ]] && [[ -n "$CRAPI_OPENAPI_URL" ]]; then

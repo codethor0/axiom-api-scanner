@@ -548,7 +548,7 @@ func TestScanRunStatus_returnsProgress(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
 		t.Fatal(err)
 	}
-	if st.ScanID != scan.ID || st.Phase != string(engine.PhasePlanned) {
+	if st.Compatibility.ScanID != scan.ID || st.Run.Phase != string(engine.PhasePlanned) {
 		t.Fatalf("%+v", st)
 	}
 	if st.Progress.EndpointsDiscovered != 0 {
@@ -557,8 +557,14 @@ func TestScanRunStatus_returnsProgress(t *testing.T) {
 	if st.Coverage.AuthHeadersConfigured || st.Coverage.EndpointsDeclaringSecurity != 0 {
 		t.Fatalf("coverage %+v", st.Coverage)
 	}
-	if st.Scan.ID != scan.ID || st.Run.Phase != st.Phase || st.Scan.Status != st.ScanStatus {
-		t.Fatalf("nested scan/run must mirror top-level fields: %+v", st)
+	if st.Scan.ID != scan.ID || st.Run.Phase != st.Compatibility.Phase || st.Scan.Status != st.Compatibility.ScanStatus {
+		t.Fatalf("compatibility must mirror canonical scan/run fields: %+v", st)
+	}
+	if len(st.Diagnostics.BlockedDetail) != 1 || st.Diagnostics.BlockedDetail[0].Code != "no_imported_endpoints" {
+		t.Fatalf("diagnostics %+v", st.Diagnostics)
+	}
+	if st.Run.OrchestratorError != "" || st.Compatibility.LastError != "" {
+		t.Fatalf("want empty orchestrator error, got run=%q compat=%q", st.Run.OrchestratorError, st.Compatibility.LastError)
 	}
 }
 
@@ -595,6 +601,9 @@ func TestScanRunStatus_progressReflectsPersistedTotals(t *testing.T) {
 	if st.Run.BaselineRunStatus != "succeeded" || st.Run.MutationRunStatus != "in_progress" {
 		t.Fatalf("run state %+v", st.Run)
 	}
+	if len(st.Diagnostics.SkippedDetail) != 0 {
+		t.Fatalf("unexpected skipped_detail: %+v", st.Diagnostics)
+	}
 }
 
 func TestScanRunStatus_coverageHintsDeclaredSecurity(t *testing.T) {
@@ -630,6 +639,193 @@ func TestScanRunStatus_coverageHintsDeclaredSecurity(t *testing.T) {
 	}
 	if len(st.Coverage.Hints) != 1 || !strings.Contains(st.Coverage.Hints[0], "auth_headers") {
 		t.Fatalf("%+v", st.Coverage.Hints)
+	}
+	found := false
+	for _, b := range st.Diagnostics.BlockedDetail {
+		if b.Code == "declared_security_without_auth" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("want declared_security_without_auth in blocked_detail, got %+v", st.Diagnostics.BlockedDetail)
+	}
+}
+
+func TestScanRunStatus_failureFieldSemantics(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perr := mem.PatchScanRunPhase(ctx, scan.ID, engine.PhaseFailed, "orchestrator_stop"); perr != nil {
+		t.Fatal(perr)
+	}
+	if perr := mem.UpdateBaselineState(ctx, scan.ID, storage.BaselineState{Status: "succeeded", Error: "stale_should_hide", Total: 1, Done: 1}); perr != nil {
+		t.Fatal(perr)
+	}
+	if perr := mem.UpdateMutationState(ctx, scan.ID, storage.MutationState{Status: "failed", Error: "mutation_sub_fail", Total: 2, Done: 1}); perr != nil {
+		t.Fatal(perr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Run.OrchestratorError != "orchestrator_stop" || st.Compatibility.LastError != "orchestrator_stop" {
+		t.Fatalf("orchestrator error: run=%q compat=%q", st.Run.OrchestratorError, st.Compatibility.LastError)
+	}
+	if st.Run.BaselineRunError != "" {
+		t.Fatalf("baseline error must be hidden when baseline status is not failed; got %q", st.Run.BaselineRunError)
+	}
+	if st.Run.MutationRunError != "mutation_sub_fail" {
+		t.Fatalf("mutation sub error: %q", st.Run.MutationRunError)
+	}
+	if !st.Diagnostics.ResumeRecommended || st.Diagnostics.PhaseFailedNextStep == "" {
+		t.Fatalf("want resume hint, got %+v", st.Diagnostics)
+	}
+}
+
+func TestScanRunStatus_failureShowsBaselineSubErrorWhenFailed(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perr := mem.PatchScanRunPhase(ctx, scan.ID, engine.PhaseFailed, "after_baseline"); perr != nil {
+		t.Fatal(perr)
+	}
+	if perr := mem.UpdateBaselineState(ctx, scan.ID, storage.BaselineState{Status: "failed", Error: "no_imported_endpoints", Total: 0, Done: 0}); perr != nil {
+		t.Fatal(perr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Run.BaselineRunError != "no_imported_endpoints" {
+		t.Fatalf("want baseline sub-error: %+v", st.Run)
+	}
+	if st.Run.OrchestratorError != "after_baseline" {
+		t.Fatalf("want orchestrator error: %+v", st.Run)
+	}
+}
+
+func TestScanRunStatus_zeroMutationCandidatesSkippedDetail(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perr := mem.UpdateBaselineState(ctx, scan.ID, storage.BaselineState{Status: "succeeded", Error: "", Total: 1, Done: 1}); perr != nil {
+		t.Fatal(perr)
+	}
+	if perr := mem.UpdateMutationState(ctx, scan.ID, storage.MutationState{Status: "succeeded", Error: "", Total: 0, Done: 0}); perr != nil {
+		t.Fatal(perr)
+	}
+	if perr := mem.PatchScanRunPhase(ctx, scan.ID, engine.PhaseFindingsComplete, ""); perr != nil {
+		t.Fatal(perr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range st.Diagnostics.SkippedDetail {
+		if s.Code == "zero_mutation_candidates" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("want zero_mutation_candidates in %+v", st.Diagnostics.SkippedDetail)
+	}
+}
+
+func TestScanRunStatus_postFailureReconcileStyleReadModel(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perr := mem.UpdateBaselineState(ctx, scan.ID, storage.BaselineState{Status: "succeeded", Error: "", Total: 2, Done: 2}); perr != nil {
+		t.Fatal(perr)
+	}
+	if perr := mem.PatchScanRunPhase(ctx, scan.ID, engine.PhaseBaselineComplete, ""); perr != nil {
+		t.Fatal(perr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Run.Phase != string(engine.PhaseBaselineComplete) || st.Run.OrchestratorError != "" {
+		t.Fatalf("want clean orchestrator fields after reconcile-style phase: %+v", st.Run)
+	}
+	if st.Diagnostics.ResumeRecommended {
+		t.Fatalf("resume not expected when not failed: %+v", st.Diagnostics)
+	}
+}
+
+func TestScanRunStatus_baselineNotRecordedSkippedWhenPlanned(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rperr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{{Method: "GET", Path: "/x"}}); rperr != nil {
+		t.Fatal(rperr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range st.Diagnostics.SkippedDetail {
+		if s.Code == "baseline_not_recorded" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("want baseline_not_recorded in %+v", st.Diagnostics)
 	}
 }
 
@@ -685,11 +881,11 @@ func TestScanRunControl_cancelWithoutOrchestrator(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
 		t.Fatal(err)
 	}
-	if st.Phase != string(engine.PhaseCanceled) || st.ScanStatus != string(engine.ScanCanceled) {
+	if st.Run.Phase != string(engine.PhaseCanceled) || st.Scan.Status != string(engine.ScanCanceled) {
 		t.Fatalf("%+v", st)
 	}
-	if st.Run.Phase != st.Phase || st.Scan.ID != st.ScanID || st.Scan.Status != st.ScanStatus {
-		t.Fatalf("nested fields must mirror top-level: %+v", st)
+	if st.Run.Phase != st.Compatibility.Phase || st.Scan.ID != st.Compatibility.ScanID || st.Scan.Status != st.Compatibility.ScanStatus {
+		t.Fatalf("compatibility must mirror canonical: %+v", st)
 	}
 }
 

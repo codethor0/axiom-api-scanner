@@ -70,7 +70,7 @@ Repositories cover scans (target, auth, `run_phase`, `run_error`, baseline and m
 4. `POST /v1/scans/{id}/executions/baseline` runs the baseline runner alone, writes baseline `execution_records`, updates baseline progress fields, returns runner output plus planner decisions and a capped mutation preview from `AXIOM_RULES_DIR`.
 5. `POST /v1/scans/{id}/executions/mutations` runs mutations sequentially from the same rule set (no broad concurrency). Writes mutated `execution_records` (with stable `candidate_key` for resume), runs diff vs the latest baseline per endpoint, and persists findings plus evidence when all matchers pass. Re-running with the same candidate reuses the stored mutated execution and does not insert a second finding for the same evidence tuple.
 6. `GET /v1/scans/{id}/executions` and `GET .../executions/{executionID}` return stored exchanges (optional `phase` and `scan_endpoint_id` query filters on the list).
-7. `GET /v1/scans/{id}/run/status` returns grouped `scan`, `run`, `progress`, and `coverage` objects (plus legacy top-level mirrors) so operators see metadata, orchestration phase, runner status lines, and persisted counters only.
+7. `GET /v1/scans/{id}/run/status` returns canonical `scan`, `run`, `progress`, `coverage`, and `diagnostics` objects; `compatibility` holds legacy mirrors (`scan_id`, `phase`, `scan_status`, `last_error` = orchestrator error only). Operator errors are split: `run.orchestrator_error` vs sub-runner fields only when those sub-statuses are `failed`.
 
 ## Limitations (honest)
 
