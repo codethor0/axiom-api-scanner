@@ -35,6 +35,8 @@ type EvidenceSummaryV1 struct {
 	// RuleDeclaredConfidence duplicates the column for bundle consumers (same as finding.rule_declared_confidence).
 	RuleDeclaredConfidence string `json:"rule_declared_confidence"`
 	AssessmentNotes        []string `json:"assessment_notes,omitempty"`
+	// InterpretationHints explain tier policy for operators (orthogonal to assessment_notes causes). Omitted when empty.
+	InterpretationHints []string `json:"interpretation_hints,omitempty"`
 }
 
 // UnmarshalJSON normalizes impact_severity and rule_severity so either key can appear in stored JSON.

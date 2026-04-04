@@ -263,7 +263,8 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 				weakNotes,
 				evidenceComplete,
 			)
-			summary := findingOperatorSummary(item.Rule.ID, ep.Method, ep.PathTemplate, item.Candidate.Detail, tier, assessNotes)
+			interp := findings.InterpretationHints(tier, assessNotes)
+			summary := findingOperatorSummary(item.Rule.ID, ep.Method, ep.PathTemplate, item.Candidate.Detail, tier, assessNotes, interp)
 			diffPts := append([]string(nil), diffWrap.Reasons...)
 			for _, o := range diffWrap.Outcomes {
 				if strings.TrimSpace(o.Summary) != "" {
@@ -282,6 +283,7 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 				RuleSeverity:           item.Rule.Severity,
 				RuleDeclaredConfidence: item.Rule.Confidence,
 				AssessmentNotes:        assessNotes,
+				InterpretationHints:    interp,
 			})
 			summaryBytes := []byte(summaryRaw)
 			if jerr != nil {
@@ -388,14 +390,21 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 	}, nil
 }
 
-// findingOperatorSummary is the persisted one-line finding text (list + detail). Non-confirmed tiers
-// append stable assessment note codes so operators see why a row is not confirmed without opening evidence_summary.
-func findingOperatorSummary(ruleID, method, pathTemplate, candidateDetail, tier string, assessNotes []string) string {
+// findingOperatorSummary is the persisted one-line finding text (list + detail). Tentative/incomplete tiers
+// append assessment note codes; interpretation hints (tier policy, not target-specific) append when non-empty.
+// Confirmed findings stay a single clause with no trailing codes.
+func findingOperatorSummary(ruleID, method, pathTemplate, candidateDetail, tier string, assessNotes, interpretationHints []string) string {
 	s := fmt.Sprintf("rule %s matched for %s %s (%s)", ruleID, method, pathTemplate, candidateDetail)
-	if strings.TrimSpace(tier) == "confirmed" || len(assessNotes) == 0 {
+	if strings.TrimSpace(tier) == "confirmed" {
 		return s
 	}
-	return s + "; assessment: " + strings.Join(assessNotes, ", ")
+	if len(assessNotes) > 0 {
+		s += "; assessment: " + strings.Join(assessNotes, ", ")
+	}
+	if len(interpretationHints) > 0 {
+		s += "; interpretation: " + strings.Join(interpretationHints, ", ")
+	}
+	return s
 }
 
 func requestSnapshot(rec engine.ExecutionRecord) string {

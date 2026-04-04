@@ -159,6 +159,8 @@ expect_count "$RULE_MASS" 1
 expect_count "$RULE_PATHNORM" 2
 expect_count "$RULE_RATELIMIT" 0
 
+echo "    benchmark harness: scan A has no rate-limit finding because httpbin does not expose the differential ${RULE_RATELIMIT} header behavior (fixture-limited honest no-finding; matchers did not pass)."
+
 all_tier "$RULE_IDOR" "tentative"
 all_tier "$RULE_MASS" "confirmed"
 all_tier "$RULE_PATHNORM" "tentative"
@@ -167,6 +169,7 @@ summaries_contain "$RULE_IDOR" 'weak_body_similarity_matcher'
 summaries_contain "$RULE_IDOR" 'similarity_min_score_0.85'
 summaries_contain "$RULE_PATHNORM" 'weak_body_similarity_matcher'
 summaries_contain "$RULE_PATHNORM" 'similarity_min_score_0.85'
+summaries_contain "$RULE_IDOR" 'interpretation_body_similarity_min_below_0_9_keeps_tentative_tier'
 
 # Evidence JSON: tentative rows carry the same assessment_notes as the list summary (read-path parity).
 assert_tentative_evidence_notes() {
@@ -176,6 +179,15 @@ assert_tentative_evidence_notes() {
   echo "$detail" | jq -e '(.evidence_summary.assessment_notes | index("weak_body_similarity_matcher")) != null' >/dev/null
   echo "$detail" | jq -e '(.evidence_summary.assessment_notes | index("similarity_min_score_0.85")) != null' >/dev/null
   echo "$detail" | jq -e '.assessment_tier == "tentative"' >/dev/null
+  echo "$detail" | jq -e '(.evidence_summary.interpretation_hints // [] | index("interpretation_body_similarity_min_below_0_9_keeps_tentative_tier")) != null' >/dev/null
+}
+
+assert_confirmed_evidence_no_interpretation_hints() {
+  local fid="$1"
+  local detail
+  detail="$(curl -sf "$AXIOM_URL/v1/findings/$fid")"
+  echo "$detail" | jq -e '.assessment_tier == "confirmed"' >/dev/null
+  echo "$detail" | jq -e '(.evidence_summary.interpretation_hints // []) | length == 0' >/dev/null
 }
 
 FID_IDOR="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_IDOR"'") | .id')"
@@ -186,8 +198,8 @@ done < <(echo "$FINDINGS" | jq -r '.items[] | select(.rule_id == "'"$RULE_PATHNO
 assert_tentative_evidence_notes "$FID_IDOR"
 
 FID_MASS="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_MASS"'") | .id')"
+assert_confirmed_evidence_no_interpretation_hints "$FID_MASS"
 MASS_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_MASS")"
-echo "$MASS_DETAIL" | jq -e '.assessment_tier == "confirmed"' >/dev/null
 echo "$MASS_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
 
 # Read-path: endpoint detail for an endpoint that has findings.
@@ -265,6 +277,7 @@ if [[ "$bad_path_rl" != 0 ]]; then
 fi
 
 FID_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_RATELIMIT"'") | .id')"
+assert_confirmed_evidence_no_interpretation_hints "$FID_RL"
 RL_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_RL")"
 echo "$RL_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
 FID_PATHSTUB="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')"
@@ -273,5 +286,7 @@ EP_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_RA
 curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/endpoints/$EP_RL" | jq -e '.drilldown.findings_list_path | startswith("/v1/")' >/dev/null
 RL_EXEC="$(echo "$RL_DETAIL" | jq -er '.mutated_execution_id')"
 curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions/$RL_EXEC" | jq -e '.phase == "mutated"' >/dev/null
+
+echo "    benchmark harness: scan B ${RULE_PATHNORM} row is the same weak-similarity tentative class as httpbin pathnorm; the nginx stub only changes eligibility/header facts for ${RULE_RATELIMIT} (fixture coupling artifact vs httpbin, not a different scanner tier policy)."
 
 echo "OK: finding-quality benchmark passed (httpbin + rate stub, four V1 families with honest httpbin no-finding for rate limit)."
