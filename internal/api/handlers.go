@@ -14,6 +14,7 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
 	"github.com/codethor0/axiom-api-scanner/internal/mutate"
+	"github.com/codethor0/axiom-api-scanner/internal/orchestrator"
 	v1plan "github.com/codethor0/axiom-api-scanner/internal/plan/v1"
 	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/spec/openapi"
@@ -37,13 +38,15 @@ type Handler struct {
 
 	Scans       storage.ScanRepository
 	ScanTargets storage.ScanTargetRepository
+	ScanRun     storage.ScanRunRepository
 	Endpoints   storage.EndpointRepository
 	Executions  storage.ExecutionRepository
 	Findings    storage.FindingRepository
 	Evidence    storage.EvidenceMetadataRepository
 
-	Baseline  *baseline.Runner
-	Mutations *mutation.Runner
+	Baseline     *baseline.Runner
+	Mutations    *mutation.Runner
+	Orchestrator *orchestrator.Service
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -56,6 +59,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/v1/scans", h.createScan)
 	r.Patch("/v1/scans/{scanID}", h.patchScan)
 	r.Get("/v1/scans/{scanID}", h.getScan)
+	r.Get("/v1/scans/{scanID}/run/status", h.scanRunStatus)
+	r.Post("/v1/scans/{scanID}/run", h.scanRunControl)
 	r.Post("/v1/scans/{scanID}/control", h.controlScan)
 	r.Post("/v1/scans/{scanID}/specs/openapi", h.importOpenAPIScan)
 	r.Get("/v1/scans/{scanID}/endpoints", h.listScanEndpoints)

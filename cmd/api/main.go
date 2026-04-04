@@ -13,6 +13,8 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/dbmigrate"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
+	"github.com/codethor0/axiom-api-scanner/internal/orchestrator"
+	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/storage/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -55,16 +57,26 @@ func main() {
 	defer pool.Close()
 
 	store := postgres.NewStore(pool)
+	baseRunner := baseline.NewRunner(store)
+	mutRunner := mutation.NewRunner(store)
+	ruleLoader := rules.Loader{}
 	h := &api.Handler{
 		RulesDir:    rulesDir,
 		Scans:       store,
 		ScanTargets: store,
+		ScanRun:     store,
 		Endpoints:   store,
 		Executions:  store,
 		Findings:    store,
 		Evidence:    store,
-		Baseline:    baseline.NewRunner(store),
-		Mutations:   mutation.NewRunner(store),
+		Baseline:    baseRunner,
+		Mutations:   mutRunner,
+		Orchestrator: &orchestrator.Service{
+			Store:     store,
+			Baseline:  baseRunner,
+			Mutations: mutRunner,
+			LoadRules: func() ([]rules.Rule, error) { return ruleLoader.LoadDir(rulesDir) },
+		},
 	}
 
 	srv := &http.Server{

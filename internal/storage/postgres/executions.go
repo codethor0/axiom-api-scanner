@@ -31,8 +31,8 @@ func (s *Store) InsertExecutionRecord(ctx context.Context, rec engine.ExecutionR
 INSERT INTO execution_records (
   scan_id, scan_endpoint_id, phase, rule_id,
   request_method, request_url, request_headers, request_body,
-  response_status, response_headers, response_body, response_content_type, duration_ms
-) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10::jsonb, $11, $12, $13)
+  response_status, response_headers, response_body, response_content_type, duration_ms, candidate_key
+) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10::jsonb, $11, $12, $13, $14)
 RETURNING id`
 
 	var id string
@@ -54,6 +54,7 @@ RETURNING id`
 		rec.ResponseBody,
 		rec.ResponseContentType,
 		rec.DurationMs,
+		nullCandidateKeyStr(rec.CandidateKey),
 	)
 	if err := row.Scan(&id); err != nil {
 		return "", fmt.Errorf("insert execution: %w", err)
@@ -68,10 +69,18 @@ func nullRuleID(s string) any {
 	return s
 }
 
+func nullCandidateKeyStr(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 const executionSelect = `
 SELECT id, scan_id, scan_endpoint_id, phase, rule_id,
        request_method, request_url, request_headers, request_body,
-       response_status, response_headers, response_body, response_content_type, duration_ms, created_at
+       response_status, response_headers, response_body, response_content_type, duration_ms,
+       COALESCE(candidate_key, ''), created_at
 FROM execution_records`
 
 func scanExecution(row pgx.Row) (engine.ExecutionRecord, error) {
@@ -94,6 +103,7 @@ func scanExecution(row pgx.Row) (engine.ExecutionRecord, error) {
 		&rec.ResponseBody,
 		&rec.ResponseContentType,
 		&rec.DurationMs,
+		&rec.CandidateKey,
 		&rec.CreatedAt,
 	)
 	if err != nil {
@@ -109,6 +119,24 @@ func scanExecution(row pgx.Row) (engine.ExecutionRecord, error) {
 	rec.ResponseHeaders = map[string]string{}
 	_ = json.Unmarshal(reqH, &rec.RequestHeaders)
 	_ = json.Unmarshal(respH, &rec.ResponseHeaders)
+	return rec, nil
+}
+
+// GetMutationByCandidate returns an existing mutated execution for resume/dedup.
+func (s *Store) GetMutationByCandidate(ctx context.Context, scanID, scanEndpointID, ruleID, candidateKey string) (engine.ExecutionRecord, error) {
+	if candidateKey == "" {
+		return engine.ExecutionRecord{}, storage.ErrNotFound
+	}
+	q := executionSelect + `
+WHERE scan_id = $1 AND scan_endpoint_id = $2 AND phase = 'mutated' AND rule_id = $3 AND candidate_key = $4
+ORDER BY created_at DESC LIMIT 1`
+	rec, err := scanExecution(s.pool.QueryRow(ctx, q, scanID, scanEndpointID, ruleID, candidateKey))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return engine.ExecutionRecord{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return engine.ExecutionRecord{}, fmt.Errorf("mutation by candidate: %w", err)
+	}
 	return rec, nil
 }
 

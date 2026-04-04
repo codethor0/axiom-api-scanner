@@ -12,7 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const scanReturningColumns = `id, status, target_label, safety_mode, allow_full_execution,
+const scanReturningColumns = `id, status, run_phase, COALESCE(run_error, ''),
+       target_label, safety_mode, allow_full_execution,
        COALESCE(base_url, ''), COALESCE(auth_headers::text, '{}'),
        COALESCE(baseline_run_status, ''), COALESCE(baseline_run_error, ''),
        baseline_endpoints_total, baseline_endpoints_done,
@@ -28,6 +29,8 @@ func scanFromRow(row pgx.Row) (engine.Scan, error) {
 	err := row.Scan(
 		&scan.ID,
 		&scan.Status,
+		&scan.RunPhase,
+		&scan.RunError,
 		&scan.TargetLabel,
 		&scan.SafetyMode,
 		&scan.AllowFullExecution,
@@ -131,6 +134,32 @@ RETURNING ` + scanReturningColumns
 		return engine.Scan{}, fmt.Errorf("patch scan: %w", err)
 	}
 	return out, nil
+}
+
+// PatchScanRunPhase updates orchestration phase and optional run-level error text.
+func (s *Store) PatchScanRunPhase(ctx context.Context, id string, phase engine.ScanRunPhase, runErr string) error {
+	const q = `UPDATE scans SET run_phase = $2, run_error = $3, updated_at = now() WHERE id = $1`
+	tag, err := s.pool.Exec(ctx, q, id, string(phase), runErr)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return storage.ErrNotFound
+	}
+	return nil
+}
+
+// SetScanStatusAndRunPhase updates lifecycle status, run phase, and error in one write.
+func (s *Store) SetScanStatusAndRunPhase(ctx context.Context, id string, status engine.ScanStatus, phase engine.ScanRunPhase, runErr string) error {
+	const q = `UPDATE scans SET status = $2, run_phase = $3, run_error = $4, updated_at = now() WHERE id = $1`
+	tag, err := s.pool.Exec(ctx, q, id, string(status), string(phase), runErr)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return storage.ErrNotFound
+	}
+	return nil
 }
 
 // UpdateBaselineState updates baseline counters and status on the scan row.

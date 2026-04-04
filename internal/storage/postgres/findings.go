@@ -10,6 +10,7 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const findingsRowSelect = `id, scan_id, rule_id, category, severity, summary,
@@ -89,6 +90,20 @@ func scanFindingRow(row pgx.Row) (findings.Finding, error) {
 	return f, nil
 }
 
+// GetByEvidenceTuple returns a finding for an exact evidence tuple (dedup key).
+func (s *Store) GetByEvidenceTuple(ctx context.Context, scanID, ruleID, scanEndpointID, baselineExecutionID, mutatedExecutionID string) (findings.Finding, error) {
+	q := `SELECT ` + findingsRowSelect + ` FROM findings WHERE scan_id = $1 AND rule_id = $2
+AND scan_endpoint_id = $3::uuid AND baseline_execution_id = $4::uuid AND mutated_execution_id = $5::uuid`
+	f, err := scanFindingRow(s.pool.QueryRow(ctx, q, scanID, ruleID, scanEndpointID, baselineExecutionID, mutatedExecutionID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return findings.Finding{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return findings.Finding{}, fmt.Errorf("get finding by evidence: %w", err)
+	}
+	return f, nil
+}
+
 // GetByID returns a single finding.
 func (s *Store) GetByID(ctx context.Context, id string) (findings.Finding, error) {
 	q := `SELECT ` + findingsRowSelect + ` FROM findings WHERE id = $1`
@@ -159,6 +174,10 @@ RETURNING ` + findingsRowSelect
 		in.RuleDeclaredConfidence,
 	))
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return findings.Finding{}, storage.ErrDuplicateFinding
+		}
 		return findings.Finding{}, fmt.Errorf("insert finding: %w", err)
 	}
 

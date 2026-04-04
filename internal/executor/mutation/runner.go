@@ -14,6 +14,7 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/executil"
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
+	"github.com/codethor0/axiom-api-scanner/internal/mutate"
 	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
@@ -23,8 +24,10 @@ type Store interface {
 	GetScan(ctx context.Context, id string) (engine.Scan, error)
 	ListScanEndpoints(ctx context.Context, scanID string) ([]engine.ScanEndpoint, error)
 	GetLatestExecution(ctx context.Context, scanID, scanEndpointID string, phase engine.ExecutionPhase) (engine.ExecutionRecord, error)
+	GetMutationByCandidate(ctx context.Context, scanID, scanEndpointID, ruleID, candidateKey string) (engine.ExecutionRecord, error)
 	InsertExecutionRecord(ctx context.Context, rec engine.ExecutionRecord) (string, error)
 	UpdateMutationState(ctx context.Context, scanID string, st storage.MutationState) error
+	GetByEvidenceTuple(ctx context.Context, scanID, ruleID, scanEndpointID, baselineExecutionID, mutatedExecutionID string) (findings.Finding, error)
 	CreateFinding(ctx context.Context, in storage.CreateFindingInput) (findings.Finding, error)
 }
 
@@ -123,6 +126,7 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 		}
 
 		ep := item.Endpoint
+		candKey := mutate.DedupeKey(item.Candidate)
 		baseline, berr := r.Store.GetLatestExecution(ctx, scanID, ep.ID, engine.PhaseBaseline)
 		if berr != nil {
 			skipped++
@@ -130,101 +134,112 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 			continue
 		}
 
-		built, err := BuildRequest(baseStr, ep, item.Rule, item.Candidate)
-		if err != nil {
-			skipped++
-			warns = append(warns, fmt.Sprintf("build_failed:%s:%v", item.Candidate.RuleID, err))
-			continue
-		}
-
-		if !executil.HasPrefixURL(baseStr, built.URL) {
-			skipped++
-			warns = append(warns, fmt.Sprintf("out_of_scope:%s", ep.ID))
-			continue
-		}
-
-		method := built.Method
-		if method != http.MethodGet && method != http.MethodPost {
-			skipped++
-			warns = append(warns, fmt.Sprintf("method_not_supported:%s", method))
-			continue
-		}
-
-		var bodyReader io.Reader
-		if built.Body != "" {
-			bodyReader = strings.NewReader(built.Body)
-		}
-		req, err := http.NewRequestWithContext(ctx, method, built.URL, bodyReader)
-		if err != nil {
-			skipped++
-			continue
-		}
-		for k, v := range scan.AuthHeaders {
-			req.Header.Set(k, v)
-		}
-		for k, v := range built.ExtraHeader {
-			req.Header.Set(k, v)
-		}
-		req.Header.Set("User-Agent", "Axiom-Mutation/1")
-		if built.Body != "" {
-			req.Header.Set("Content-Type", "application/json")
-		}
-
-		start := time.Now()
-		resp, err := r.HTTP.Do(req)
-		dur := time.Since(start).Milliseconds()
-		status := 0
-		respHeaders := map[string]string{}
-		respBody := ""
-		respCT := ""
-		if err != nil {
-			warns = append(warns, fmt.Sprintf("http_error:%s:%v", ep.ID, err))
+		var mutRec engine.ExecutionRecord
+		var mutID string
+		if prev, perr := r.Store.GetMutationByCandidate(ctx, scanID, ep.ID, item.Candidate.RuleID, candKey); perr == nil {
+			mutRec = prev
+			mutID = prev.ID
+			mutIDs = append(mutIDs, mutID)
+			executed++
 		} else {
-			func() {
-				defer func() { _ = resp.Body.Close() }()
-				status = resp.StatusCode
-				respCT = resp.Header.Get("Content-Type")
-				respHeaders = executil.RedactSensitiveHeaders(executil.FilterHeaders(resp.Header))
-				lim := io.LimitReader(resp.Body, r.MaxBody)
-				b, _ := io.ReadAll(lim)
-				respBody = executil.NormalizeResponseBody(respCT, b)
-			}()
-		}
+			built, err := BuildRequest(baseStr, ep, item.Rule, item.Candidate)
+			if err != nil {
+				skipped++
+				warns = append(warns, fmt.Sprintf("build_failed:%s:%v", item.Candidate.RuleID, err))
+				continue
+			}
 
-		mutRec := engine.ExecutionRecord{
-			ScanID:              scanID,
-			ScanEndpointID:      ep.ID,
-			Phase:               engine.PhaseMutated,
-			RuleID:              item.Candidate.RuleID,
-			RequestMethod:       method,
-			RequestURL:          built.URL,
-			RequestHeaders:      executil.RedactSensitiveHeaders(executil.FilterHeaders(req.Header)),
-			RequestBody:         built.Body,
-			ResponseStatus:      status,
-			ResponseHeaders:     respHeaders,
-			ResponseBody:        respBody,
-			ResponseContentType: respCT,
-			DurationMs:          dur,
+			if !executil.HasPrefixURL(baseStr, built.URL) {
+				skipped++
+				warns = append(warns, fmt.Sprintf("out_of_scope:%s", ep.ID))
+				continue
+			}
+
+			method := built.Method
+			if method != http.MethodGet && method != http.MethodPost {
+				skipped++
+				warns = append(warns, fmt.Sprintf("method_not_supported:%s", method))
+				continue
+			}
+
+			var bodyReader io.Reader
+			if built.Body != "" {
+				bodyReader = strings.NewReader(built.Body)
+			}
+			req, err := http.NewRequestWithContext(ctx, method, built.URL, bodyReader)
+			if err != nil {
+				skipped++
+				continue
+			}
+			for k, v := range scan.AuthHeaders {
+				req.Header.Set(k, v)
+			}
+			for k, v := range built.ExtraHeader {
+				req.Header.Set(k, v)
+			}
+			req.Header.Set("User-Agent", "Axiom-Mutation/1")
+			if built.Body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+
+			start := time.Now()
+			resp, err := r.HTTP.Do(req)
+			dur := time.Since(start).Milliseconds()
+			status := 0
+			respHeaders := map[string]string{}
+			respBody := ""
+			respCT := ""
+			if err != nil {
+				warns = append(warns, fmt.Sprintf("http_error:%s:%v", ep.ID, err))
+			} else {
+				func() {
+					defer func() { _ = resp.Body.Close() }()
+					status = resp.StatusCode
+					respCT = resp.Header.Get("Content-Type")
+					respHeaders = executil.RedactSensitiveHeaders(executil.FilterHeaders(resp.Header))
+					lim := io.LimitReader(resp.Body, r.MaxBody)
+					b, _ := io.ReadAll(lim)
+					respBody = executil.NormalizeResponseBody(respCT, b)
+				}()
+			}
+
+			mutRec = engine.ExecutionRecord{
+				ScanID:              scanID,
+				ScanEndpointID:      ep.ID,
+				Phase:               engine.PhaseMutated,
+				RuleID:              item.Candidate.RuleID,
+				CandidateKey:        candKey,
+				RequestMethod:       method,
+				RequestURL:          built.URL,
+				RequestHeaders:      executil.RedactSensitiveHeaders(executil.FilterHeaders(req.Header)),
+				RequestBody:         built.Body,
+				ResponseStatus:      status,
+				ResponseHeaders:     respHeaders,
+				ResponseBody:        respBody,
+				ResponseContentType: respCT,
+				DurationMs:          dur,
+			}
+			var ierr error
+			mutID, ierr = r.Store.InsertExecutionRecord(ctx, mutRec)
+			if ierr != nil {
+				_ = r.Store.UpdateMutationState(ctx, scanID, storage.MutationState{
+					Status: "failed", Error: ierr.Error(), Total: total, Done: executed,
+				})
+				return Result{
+					Status:              "failed",
+					Error:               ierr.Error(),
+					CandidatesTotal:     total,
+					CandidatesExecuted:  executed,
+					CandidatesSkipped:   skipped,
+					MutatedExecutionIDs: mutIDs,
+					FindingIDs:          findIDs,
+					Warnings:            warns,
+				}, ierr
+			}
+			mutIDs = append(mutIDs, mutID)
+			mutRec.ID = mutID
+			executed++
 		}
-		mutID, ierr := r.Store.InsertExecutionRecord(ctx, mutRec)
-		if ierr != nil {
-			_ = r.Store.UpdateMutationState(ctx, scanID, storage.MutationState{
-				Status: "failed", Error: ierr.Error(), Total: total, Done: executed,
-			})
-			return Result{
-				Status:              "failed",
-				Error:               ierr.Error(),
-				CandidatesTotal:     total,
-				CandidatesExecuted:  executed,
-				CandidatesSkipped:   skipped,
-				MutatedExecutionIDs: mutIDs,
-				FindingIDs:          findIDs,
-				Warnings:            warns,
-			}, ierr
-		}
-		mutIDs = append(mutIDs, mutID)
-		mutRec.ID = mutID
-		executed++
 
 		diffWrap := diffv1.EvaluateRuleMatchersWithOutcomes(item.Rule, baseline, mutRec)
 		if diffWrap.Incomplete {
@@ -271,43 +286,82 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 			if jerr != nil {
 				summaryBytes = []byte(`{}`)
 			}
-			fin, ferr := r.Store.CreateFinding(ctx, storage.CreateFindingInput{
-				ScanID:                 scanID,
-				RuleID:                 item.Rule.ID,
-				Category:               item.Rule.Category,
-				Severity:               findings.Severity(item.Rule.Severity),
-				RuleDeclaredConfidence: strings.ToLower(strings.TrimSpace(item.Rule.Confidence)),
-				AssessmentTier:         tier,
-				Summary:                summary,
-				EvidenceSummary:        summaryBytes,
-				ScanEndpointID:         ep.ID,
-				BaselineExecutionID:    baseline.ID,
-				MutatedExecutionID:     mutID,
-				EvidenceURI:            "",
-				Evidence: storage.CreateEvidenceInput{
-					BaselineRequest: requestSnapshot(baseline),
-					MutatedRequest:  requestSnapshot(mutRec),
-					BaselineBody:    baseline.ResponseBody,
-					MutatedBody:     mutRec.ResponseBody,
-					DiffSummary:     diffSummary,
-				},
-			})
-			if ferr != nil {
+			if existingFin, gerr := r.Store.GetByEvidenceTuple(ctx, scanID, item.Rule.ID, ep.ID, baseline.ID, mutID); gerr == nil {
+				findIDs = append(findIDs, existingFin.ID)
+			} else if !errors.Is(gerr, storage.ErrNotFound) {
 				_ = r.Store.UpdateMutationState(ctx, scanID, storage.MutationState{
-					Status: "failed", Error: ferr.Error(), Total: total, Done: executed,
+					Status: "failed", Error: gerr.Error(), Total: total, Done: executed,
 				})
 				return Result{
 					Status:              "failed",
-					Error:               ferr.Error(),
+					Error:               gerr.Error(),
 					CandidatesTotal:     total,
 					CandidatesExecuted:  executed,
 					CandidatesSkipped:   skipped,
 					MutatedExecutionIDs: mutIDs,
 					FindingIDs:          findIDs,
 					Warnings:            warns,
-				}, ferr
+				}, gerr
+			} else {
+				fin, ferr := r.Store.CreateFinding(ctx, storage.CreateFindingInput{
+					ScanID:                 scanID,
+					RuleID:                 item.Rule.ID,
+					Category:               item.Rule.Category,
+					Severity:               findings.Severity(item.Rule.Severity),
+					RuleDeclaredConfidence: strings.ToLower(strings.TrimSpace(item.Rule.Confidence)),
+					AssessmentTier:         tier,
+					Summary:                summary,
+					EvidenceSummary:        summaryBytes,
+					ScanEndpointID:         ep.ID,
+					BaselineExecutionID:    baseline.ID,
+					MutatedExecutionID:     mutID,
+					EvidenceURI:            "",
+					Evidence: storage.CreateEvidenceInput{
+						BaselineRequest: requestSnapshot(baseline),
+						MutatedRequest:  requestSnapshot(mutRec),
+						BaselineBody:    baseline.ResponseBody,
+						MutatedBody:     mutRec.ResponseBody,
+						DiffSummary:     diffSummary,
+					},
+				})
+				if ferr != nil {
+					if errors.Is(ferr, storage.ErrDuplicateFinding) {
+						if refetch, rerr := r.Store.GetByEvidenceTuple(ctx, scanID, item.Rule.ID, ep.ID, baseline.ID, mutID); rerr == nil {
+							findIDs = append(findIDs, refetch.ID)
+						} else {
+							_ = r.Store.UpdateMutationState(ctx, scanID, storage.MutationState{
+								Status: "failed", Error: ferr.Error(), Total: total, Done: executed,
+							})
+							return Result{
+								Status:              "failed",
+								Error:               ferr.Error(),
+								CandidatesTotal:     total,
+								CandidatesExecuted:  executed,
+								CandidatesSkipped:   skipped,
+								MutatedExecutionIDs: mutIDs,
+								FindingIDs:          findIDs,
+								Warnings:            warns,
+							}, ferr
+						}
+					} else {
+						_ = r.Store.UpdateMutationState(ctx, scanID, storage.MutationState{
+							Status: "failed", Error: ferr.Error(), Total: total, Done: executed,
+						})
+						return Result{
+							Status:              "failed",
+							Error:               ferr.Error(),
+							CandidatesTotal:     total,
+							CandidatesExecuted:  executed,
+							CandidatesSkipped:   skipped,
+							MutatedExecutionIDs: mutIDs,
+							FindingIDs:          findIDs,
+							Warnings:            warns,
+						}, ferr
+					}
+				} else {
+					findIDs = append(findIDs, fin.ID)
+				}
 			}
-			findIDs = append(findIDs, fin.ID)
 		}
 
 		_ = r.Store.UpdateMutationState(ctx, scanID, storage.MutationState{

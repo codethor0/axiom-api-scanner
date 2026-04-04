@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -51,6 +52,7 @@ func (m *memRepositories) CreateScan(_ context.Context, in storage.CreateScanInp
 	s := engine.Scan{
 		ID:                     id,
 		Status:                 engine.ScanQueued,
+		RunPhase:               engine.PhasePlanned,
 		TargetLabel:            in.TargetLabel,
 		SafetyMode:             in.SafetyMode,
 		AllowFullExecution:     in.AllowFullExecution,
@@ -144,6 +146,30 @@ func (m *memRepositories) InsertExecutionRecord(_ context.Context, rec engine.Ex
 	return id, nil
 }
 
+func (m *memRepositories) GetMutationByCandidate(_ context.Context, scanID, scanEndpointID, ruleID, candidateKey string) (engine.ExecutionRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if candidateKey == "" {
+		return engine.ExecutionRecord{}, storage.ErrNotFound
+	}
+	var best engine.ExecutionRecord
+	var found bool
+	for _, rec := range m.execRecords {
+		if rec.ScanID != scanID || rec.ScanEndpointID != scanEndpointID || rec.Phase != engine.PhaseMutated ||
+			rec.RuleID != ruleID || rec.CandidateKey != candidateKey {
+			continue
+		}
+		if !found || rec.CreatedAt.After(best.CreatedAt) {
+			best = rec
+			found = true
+		}
+	}
+	if !found {
+		return engine.ExecutionRecord{}, storage.ErrNotFound
+	}
+	return best, nil
+}
+
 func (m *memRepositories) GetLatestExecution(_ context.Context, scanID, scanEndpointID string, phase engine.ExecutionPhase) (engine.ExecutionRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -218,9 +244,27 @@ func (m *memRepositories) UpdateMutationState(_ context.Context, scanID string, 
 	return nil
 }
 
+func (m *memRepositories) GetByEvidenceTuple(_ context.Context, scanID, ruleID, scanEndpointID, baselineExecutionID, mutatedExecutionID string) (findings.Finding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, f := range m.byScan[scanID] {
+		if f.RuleID == ruleID && f.ScanEndpointID == scanEndpointID &&
+			f.BaselineExecutionID == baselineExecutionID && f.MutatedExecutionID == mutatedExecutionID {
+			return f, nil
+		}
+	}
+	return findings.Finding{}, storage.ErrNotFound
+}
+
 func (m *memRepositories) CreateFinding(_ context.Context, in storage.CreateFindingInput) (findings.Finding, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for _, f := range m.byScan[in.ScanID] {
+		if f.RuleID == in.RuleID && f.ScanEndpointID == in.ScanEndpointID &&
+			f.BaselineExecutionID == in.BaselineExecutionID && f.MutatedExecutionID == in.MutatedExecutionID {
+			return findings.Finding{}, storage.ErrDuplicateFinding
+		}
+	}
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	evidenceURI := in.EvidenceURI
@@ -278,6 +322,35 @@ func (m *memRepositories) GetScan(_ context.Context, id string) (engine.Scan, er
 		return engine.Scan{}, storage.ErrNotFound
 	}
 	return s, nil
+}
+
+func (m *memRepositories) PatchScanRunPhase(_ context.Context, id string, phase engine.ScanRunPhase, runErr string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.scans[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	s.RunPhase = phase
+	s.RunError = runErr
+	s.UpdatedAt = time.Now().UTC()
+	m.scans[id] = s
+	return nil
+}
+
+func (m *memRepositories) SetScanStatusAndRunPhase(_ context.Context, id string, status engine.ScanStatus, phase engine.ScanRunPhase, runErr string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.scans[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	s.Status = status
+	s.RunPhase = phase
+	s.RunError = runErr
+	s.UpdatedAt = time.Now().UTC()
+	m.scans[id] = s
+	return nil
 }
 
 func (m *memRepositories) ApplyControl(_ context.Context, id string, action storage.ScanControlAction) (engine.Scan, error) {
@@ -361,6 +434,7 @@ func testHandler(mem *memRepositories) *Handler {
 		RulesDir:    "",
 		Scans:       mem,
 		ScanTargets: mem,
+		ScanRun:     mem,
 		Endpoints:   mem,
 		Executions:  mem,
 		Findings:    mem,
@@ -447,6 +521,123 @@ func TestCreateScan_persistsAndGets(t *testing.T) {
 	defer func() { _ = getResp.Body.Close() }()
 	if getResp.StatusCode != http.StatusOK {
 		t.Fatalf("get status %d", getResp.StatusCode)
+	}
+}
+
+func TestScanRunStatus_returnsProgress(t *testing.T) {
+	mem := newMemRepositories()
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	cr, err := http.Post(srv.URL+"/v1/scans", "application/json", strings.NewReader(`{"target_label":"t","safety_mode":"safe"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scan engine.Scan
+	_ = json.NewDecoder(cr.Body).Decode(&scan)
+	_ = cr.Body.Close()
+
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.ScanID != scan.ID || st.Phase != string(engine.PhasePlanned) {
+		t.Fatalf("%+v", st)
+	}
+	if st.Progress.EndpointsDiscovered != 0 {
+		t.Fatalf("progress %+v", st.Progress)
+	}
+}
+
+func TestScanRunControl_start_requiresOrchestrator(t *testing.T) {
+	mem := newMemRepositories()
+	h := testHandler(mem)
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	cr, err := http.Post(srv.URL+"/v1/scans", "application/json", strings.NewReader(`{"target_label":"t","safety_mode":"safe"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scan engine.Scan
+	_ = json.NewDecoder(cr.Body).Decode(&scan)
+	_ = cr.Body.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/scans/"+scan.ID+"/run", strings.NewReader(`{"action":"start"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestScanRunControl_cancelWithoutOrchestrator(t *testing.T) {
+	mem := newMemRepositories()
+	h := testHandler(mem)
+	srv := httptest.NewServer(h.Routes())
+	t.Cleanup(srv.Close)
+	cr, err := http.Post(srv.URL+"/v1/scans", "application/json", strings.NewReader(`{"target_label":"t","safety_mode":"safe"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scan engine.Scan
+	_ = json.NewDecoder(cr.Body).Decode(&scan)
+	_ = cr.Body.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/scans/"+scan.ID+"/run", strings.NewReader(`{"action":"cancel"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Phase != string(engine.PhaseCanceled) || st.ScanStatus != string(engine.ScanCanceled) {
+		t.Fatalf("%+v", st)
+	}
+}
+
+func TestMemRepositories_duplicateFindingRejected(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := storage.CreateFindingInput{
+		ScanID:                 scan.ID,
+		RuleID:                 "r1",
+		Category:               "c",
+		Severity:               findings.Severity("high"),
+		RuleDeclaredConfidence: "high",
+		AssessmentTier:         "confirmed",
+		Summary:                "s",
+		ScanEndpointID:         "e1",
+		BaselineExecutionID:    "b1",
+		MutatedExecutionID:     "m1",
+		Evidence:               storage.CreateEvidenceInput{},
+	}
+	if _, err := mem.CreateFinding(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mem.CreateFinding(ctx, in); !errors.Is(err, storage.ErrDuplicateFinding) {
+		t.Fatalf("got %v", err)
 	}
 }
 

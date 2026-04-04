@@ -29,7 +29,7 @@ Creates a persisted scan in `queued` status.
 
 `full` mode remains opt-in (`full_mode_requires_opt_in` when misconfigured).
 
-Response: `201` with `Scan` including `base_url`, `auth_headers`, baseline progress fields (`baseline_run_status`, `baseline_run_error`, `baseline_endpoints_total`, `baseline_endpoints_done`), mutation progress (`mutation_run_status`, `mutation_run_error`, `mutation_candidates_total`, `mutation_candidates_done`), and `findings_count`.
+Response: `201` with `Scan` including `run_phase`, optional `run_error`, `base_url`, `auth_headers`, baseline progress fields (`baseline_run_status`, `baseline_run_error`, `baseline_endpoints_total`, `baseline_endpoints_done`), mutation progress (`mutation_run_status`, `mutation_run_error`, `mutation_candidates_total`, `mutation_candidates_done`), and `findings_count`.
 
 ### PATCH /v1/scans/{scanID}
 
@@ -46,6 +46,41 @@ Returns a scan by UUID. `404` when absent.
 ### POST /v1/scans/{scanID}/control
 
 Transitions scan lifecycle state only (`start`, `pause`, `cancel`). Baseline execution uses a separate route so lifecycle rules stay honest.
+
+### GET /v1/scans/{scanID}/run/status
+
+Operator read model for orchestration. Returns `200` with a stable JSON object:
+
+| Field | Meaning |
+| --- | --- |
+| `scan_id` | Scan UUID |
+| `phase` | Current `run_phase` (`planned`, `baseline_running`, `baseline_complete`, `mutation_running`, `mutation_complete`, `findings_complete`, `failed`, `canceled`) |
+| `scan_status` | Lifecycle `status` on the same row (`queued`, `running`, etc.) |
+| `progress` | Object with `endpoints_discovered` (count of imported endpoints), `baseline_executions_completed`, `mutation_executions_completed`, `findings_created` (denormalized counters from the scan row) |
+| `last_error` | Populated when `phase` is `failed` or when baseline/mutation failure messages apply |
+
+Counts reflect stored scan columns, not a separate progress bar.
+
+### POST /v1/scans/{scanID}/run
+
+Runs the **orchestrated V1 pipeline** in-process: endpoint list, baseline (skipping repeat HTTP when baseline already succeeded unless forced), rule planning, mutation execution, diff/matcher evaluation, and finding persistence. Request body:
+
+```json
+{ "action": "start" | "resume" | "cancel", "force_rerun_baseline": false }
+```
+
+- `start`: normal forward run (scan may be auto-started from `queued` as today).
+- `resume`: same pipeline with **resume retry** semantics for `run_phase` (e.g. after `failed`).
+- `cancel`: sets lifecycle cancel when allowed and persists `run_phase` `canceled`. Does **not** require the orchestrator service to be configured; persistence (`Scans` + `ScanRun`) is enough.
+- `force_rerun_baseline`: when `true`, baseline HTTP is not skipped even if a prior successful baseline exists.
+
+Successful responses return **`200`** with the same JSON shape as `GET .../run/status` (after `start` or `resume` complete synchronously). Errors:
+
+- `503` `service_unavailable` when `start`/`resume` is requested but orchestration is not wired (`Orchestrator` nil in `cmd/api`).
+- `409` `invalid_run_phase` when a phase transition is rejected (wrapped `invalid scan run phase`).
+- `404` when the scan does not exist.
+
+The granular routes `POST .../executions/baseline` and `POST .../executions/mutations` remain available; orchestration composes them internally.
 
 ### POST /v1/scans/{scanID}/specs/openapi
 

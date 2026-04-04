@@ -6,7 +6,11 @@ This document describes the intended shape of Axiom at V1. The repository includ
 
 ### Control plane (`cmd/api`, `internal/api`)
 
-The HTTP API creates and updates scans, imports OpenAPI specs per scan, lists imported endpoints, triggers baseline and mutation execution, lists execution records, transitions scan state, lists findings, serves finding-tied evidence rows, and exposes rules. Baseline and mutation runs execute in-process today; the worker binary remains a stub for future asynchronous work.
+The HTTP API creates and updates scans, imports OpenAPI specs per scan, lists imported endpoints, triggers baseline and mutation execution (ad hoc or via **scan run** orchestration), lists execution records, transitions scan state, lists findings, serves finding-tied evidence rows, and exposes rules. Baseline and mutation runs execute in-process today; the worker binary remains a stub for future asynchronous work.
+
+### Scan run orchestrator (`internal/orchestrator`)
+
+A narrow `Service` sequences the safe V1 path: ensure scan is addressable, advance persisted `run_phase`, run baseline (with optional skip when already succeeded), load rules, build mutation work, run mutations, then advance phases to `findings_complete` and mark the scan completed. It is **synchronous** and single-goroutine from the caller (HTTP handler); cancellation is honored via request context and scan cancel flag between phase steps. Phase transitions are validated in `internal/engine` (`ValidateScanRunTransition`); the database stores `scans.run_phase` and `scans.run_error`.
 
 ### Worker (`cmd/worker`)
 
@@ -56,18 +60,21 @@ URL join and scope checks, response body normalization consistent with baseline 
 
 ### Storage (`internal/storage`, `internal/storage/postgres`, `migrations/`)
 
-Repositories cover scans (target, auth, baseline and mutation progress, `findings_count`), endpoint replace or list, execution insert, list, and get-by-scan, findings list, get, and create (with evidence artifact and `findings_count` bump). SQL migrations via **golang-migrate** (see [development.md](development.md)).
+Repositories cover scans (target, auth, `run_phase`, `run_error`, baseline and mutation progress, `findings_count`), endpoint replace or list, execution insert, list, get-by-scan, mutation lookup by `(scan, endpoint, rule, candidate_key)`, findings list, get, get-by-evidence-tuple, and create (with evidence artifact and `findings_count` bump). Unique constraints prevent duplicate findings for the same evidence tuple. SQL migrations via **golang-migrate** (see [development.md](development.md)).
 
 ## Current execution flow (implemented)
 
 1. Create scan; optionally set `base_url` and `auth_headers` at creation or via `PATCH`.
 2. `POST /v1/scans/{id}/specs/openapi` persists `scan_endpoints` for that scan (full replace; stale rows removed).
-3. `POST /v1/scans/{id}/executions/baseline` runs the baseline runner, writes baseline `execution_records`, updates baseline progress fields, returns runner output plus planner decisions and a capped mutation preview from `AXIOM_RULES_DIR`.
-4. `POST /v1/scans/{id}/executions/mutations` runs mutations sequentially from the same rule set (no broad concurrency). Writes mutated `execution_records`, runs diff vs the latest baseline per endpoint, and persists findings plus evidence when all matchers pass.
-5. `GET /v1/scans/{id}/executions` and `GET .../executions/{executionID}` return stored exchanges (optional `phase` and `scan_endpoint_id` query filters on the list).
+3. Either run steps manually or use **`POST /v1/scans/{id}/run`** with `action: start` (or `resume` after failure) to run baseline then mutations in one synchronous orchestration with explicit `run_phase` updates.
+4. `POST /v1/scans/{id}/executions/baseline` runs the baseline runner alone, writes baseline `execution_records`, updates baseline progress fields, returns runner output plus planner decisions and a capped mutation preview from `AXIOM_RULES_DIR`.
+5. `POST /v1/scans/{id}/executions/mutations` runs mutations sequentially from the same rule set (no broad concurrency). Writes mutated `execution_records` (with stable `candidate_key` for resume), runs diff vs the latest baseline per endpoint, and persists findings plus evidence when all matchers pass. Re-running with the same candidate reuses the stored mutated execution and does not insert a second finding for the same evidence tuple.
+6. `GET /v1/scans/{id}/executions` and `GET .../executions/{executionID}` return stored exchanges (optional `phase` and `scan_endpoint_id` query filters on the list).
+7. `GET /v1/scans/{id}/run/status` returns phase plus progress counters for operators.
 
 ## Limitations (honest)
 
+- Orchestration is in-process and blocking for the HTTP request that calls `start`/`resume`; there is no job queue or worker handoff yet.
 - No worker offload, no parallel mutation flood, no arbitrary fuzzing.
 - Diff matchers are intentionally narrow; weak matcher configurations yield `tentative` findings rather than `confirmed` when evidence is otherwise complete.
 - No automated mutated-vs-mutated comparisons; only baseline vs one mutated execution per candidate step.

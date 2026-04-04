@@ -17,6 +17,8 @@ type ExecutionRecord struct {
 	ScanEndpointID      string         `json:"scan_endpoint_id,omitempty"`
 	Phase               ExecutionPhase `json:"phase"`
 	RuleID              string         `json:"rule_id,omitempty"`
+	// CandidateKey uniquely identifies a mutation work item for resume/dedup (mutated phase only).
+	CandidateKey        string         `json:"candidate_key,omitempty"`
 	RequestMethod       string         `json:"request_method"`
 	RequestURL          string         `json:"request_url"`
 	RequestHeaders      map[string]string `json:"request_headers"`

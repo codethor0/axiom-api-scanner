@@ -29,6 +29,29 @@ type ScanControlRequest struct {
 	Action string `json:"action"`
 }
 
+// ScanRunProgress is a stable read model for operator observability.
+type ScanRunProgress struct {
+	EndpointsDiscovered         int `json:"endpoints_discovered"`
+	BaselineExecutionsCompleted int `json:"baseline_executions_completed"`
+	MutationExecutionsCompleted int `json:"mutation_executions_completed"`
+	FindingsCreated             int `json:"findings_created"`
+}
+
+// ScanRunStatusResponse describes orchestration phase and progress for one scan.
+type ScanRunStatusResponse struct {
+	ScanID     string          `json:"scan_id"`
+	Phase      string          `json:"phase"`
+	ScanStatus string          `json:"scan_status"`
+	Progress   ScanRunProgress `json:"progress"`
+	LastError  string          `json:"last_error,omitempty"`
+}
+
+// ScanRunControlRequest starts, resumes, or cancels a synchronous scan run.
+type ScanRunControlRequest struct {
+	Action               string `json:"action"`
+	ForceRerunBaseline   bool   `json:"force_rerun_baseline,omitempty"`
+}
+
 // ErrorResponse is the stable error envelope for API failures.
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`

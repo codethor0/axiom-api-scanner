@@ -18,6 +18,8 @@ const (
 type Scan struct {
 	ID                   string  `json:"id"`
 	Status               ScanStatus `json:"status"`
+	RunPhase             ScanRunPhase `json:"run_phase"`
+	RunError             string  `json:"run_error,omitempty"`
 	TargetLabel          string  `json:"target_label"`
 	SafetyMode           string  `json:"safety_mode"`
 	AllowFullExecution   bool    `json:"allow_full_execution"`

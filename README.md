@@ -58,6 +58,8 @@ Import endpoints from OpenAPI (validation + extraction):
 curl -s -X POST localhost:8080/v1/specs/openapi/import --data-binary @spec.yaml | jq .
 ```
 
+After a scan has imported endpoints and a `base_url`, you can run baseline and mutations in one synchronous orchestrated pass with `POST /v1/scans/{scan_id}/run` and body `{"action":"start"}` (details and resume/cancel in [docs/api.md](docs/api.md)).
+
 ## Documentation
 
 | Document | Purpose |

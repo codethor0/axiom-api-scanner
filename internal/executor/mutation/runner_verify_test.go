@@ -23,6 +23,7 @@ type memMutationStore struct {
 	endpoint     engine.ScanEndpoint
 	baseline     engine.ExecutionRecord
 	execs        map[string]engine.ExecutionRecord
+	findingsList []findings.Finding
 	createCalls  int
 	lastFinding  findings.Finding
 }
@@ -67,6 +68,42 @@ func (m *memMutationStore) InsertExecutionRecord(_ context.Context, rec engine.E
 	return id, nil
 }
 
+func (m *memMutationStore) GetMutationByCandidate(_ context.Context, scanID, scanEndpointID, ruleID, candidateKey string) (engine.ExecutionRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if candidateKey == "" {
+		return engine.ExecutionRecord{}, storage.ErrNotFound
+	}
+	var best engine.ExecutionRecord
+	var found bool
+	for _, rec := range m.execs {
+		if rec.ScanID != scanID || rec.ScanEndpointID != scanEndpointID || rec.Phase != engine.PhaseMutated ||
+			rec.RuleID != ruleID || rec.CandidateKey != candidateKey {
+			continue
+		}
+		if !found || rec.CreatedAt.After(best.CreatedAt) {
+			best = rec
+			found = true
+		}
+	}
+	if !found {
+		return engine.ExecutionRecord{}, storage.ErrNotFound
+	}
+	return best, nil
+}
+
+func (m *memMutationStore) GetByEvidenceTuple(_ context.Context, scanID, ruleID, scanEndpointID, baselineExecutionID, mutatedExecutionID string) (findings.Finding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, f := range m.findingsList {
+		if f.ScanID == scanID && f.RuleID == ruleID && f.ScanEndpointID == scanEndpointID &&
+			f.BaselineExecutionID == baselineExecutionID && f.MutatedExecutionID == mutatedExecutionID {
+			return f, nil
+		}
+	}
+	return findings.Finding{}, storage.ErrNotFound
+}
+
 func (m *memMutationStore) UpdateMutationState(_ context.Context, scanID string, st storage.MutationState) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -83,6 +120,12 @@ func (m *memMutationStore) UpdateMutationState(_ context.Context, scanID string,
 func (m *memMutationStore) CreateFinding(_ context.Context, in storage.CreateFindingInput) (findings.Finding, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for _, f := range m.findingsList {
+		if f.ScanID == in.ScanID && f.RuleID == in.RuleID && f.ScanEndpointID == in.ScanEndpointID &&
+			f.BaselineExecutionID == in.BaselineExecutionID && f.MutatedExecutionID == in.MutatedExecutionID {
+			return findings.Finding{}, storage.ErrDuplicateFinding
+		}
+	}
 	m.createCalls++
 	id := uuid.NewString()
 	f := findings.Finding{
@@ -106,6 +149,7 @@ func (m *memMutationStore) CreateFinding(_ context.Context, in storage.CreateFin
 		f.EvidenceURI = in.EvidenceURI
 	}
 	m.lastFinding = f
+	m.findingsList = append(m.findingsList, f)
 	return f, nil
 }
 
@@ -273,6 +317,87 @@ func TestRunner_createsFindingWhenMatchersPass(t *testing.T) {
 	}
 	if len(st.lastFinding.EvidenceSummary) == 0 {
 		t.Fatal("expected evidence_summary json")
+	}
+}
+
+func TestRunner_secondPassReusesMutationAndFinding(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"k": "v"})
+	}))
+	t.Cleanup(srv.Close)
+
+	scanID := uuid.NewString()
+	epID := uuid.NewString()
+	st := &memMutationStore{
+		scan: engine.Scan{
+			ID:                scanID,
+			BaseURL:           srv.URL,
+			BaselineRunStatus: "succeeded",
+			AuthHeaders:       map[string]string{},
+		},
+		endpoint: engine.ScanEndpoint{
+			ID:           epID,
+			ScanID:       scanID,
+			Method:       "GET",
+			PathTemplate: "/items/{id}",
+		},
+		baseline: engine.ExecutionRecord{
+			ID:                  "base-1",
+			ScanID:              scanID,
+			ScanEndpointID:      epID,
+			Phase:               engine.PhaseBaseline,
+			RequestMethod:       "GET",
+			RequestURL:          srv.URL + "/items/axiom-id-ph",
+			ResponseStatus:      200,
+			ResponseBody:        `{"k":"v"}`,
+			ResponseContentType: "application/json",
+			CreatedAt:           time.Now().UTC(),
+		},
+	}
+
+	ru := rules.Rule{
+		ID:         "rule.ok",
+		Category:   "test",
+		Severity:   "high",
+		Confidence: "high",
+		Target:     rules.RuleTarget{Methods: []string{"GET"}, Where: "path_params"},
+		Mutations: []rules.Mutation{
+			{Kind: rules.MutationReplacePathParam, ReplacePathParam: &rules.ReplacePathParamMutation{
+				Param: "id", From: "a", To: "b",
+			}},
+		},
+		Matchers: []rules.Matcher{
+			{Kind: rules.MatcherStatusCodeUnchanged},
+			{Kind: rules.MatcherResponseBodySimilarity, ResponseBodySimilarity: &rules.ResponseBodySimilarityMatcher{MinScore: 0.95}},
+		},
+	}
+
+	work, err := BuildWorkList([]engine.ScanEndpoint{st.endpoint}, []rules.Rule{ru})
+	if err != nil || len(work) != 1 {
+		t.Fatal(work, err)
+	}
+
+	r := NewRunner(st)
+	r.HTTP = srv.Client()
+	if _, err := r.Run(context.Background(), scanID, work); err != nil {
+		t.Fatal(err)
+	}
+	firstCalls := st.createCalls
+	firstFinID := st.lastFinding.ID
+
+	res2, err := r.Run(context.Background(), scanID, work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Status != "succeeded" {
+		t.Fatalf("%+v", res2)
+	}
+	if st.createCalls != firstCalls {
+		t.Fatalf("CreateFinding calls first=%d after resume=%d", firstCalls, st.createCalls)
+	}
+	if len(res2.FindingIDs) != 1 || res2.FindingIDs[0] != firstFinID {
+		t.Fatalf("finding ids %+v want %s", res2.FindingIDs, firstFinID)
 	}
 }
 

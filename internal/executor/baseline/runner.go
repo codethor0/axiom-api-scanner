@@ -24,6 +24,12 @@ type Store interface {
 	UpdateBaselineState(ctx context.Context, scanID string, st storage.BaselineState) error
 }
 
+// RunOptions configures a baseline pass.
+type RunOptions struct {
+	// Force false skips HTTP work when a prior run already succeeded for this scan.
+	Force bool
+}
+
 // Runner executes sequential GET and JSON POST baselines against imported endpoints.
 type Runner struct {
 	HTTP    *http.Client
@@ -70,12 +76,25 @@ type Result struct {
 
 // Run performs one sequential baseline pass for all eligible endpoints.
 func (r *Runner) Run(ctx context.Context, scanID string) (Result, error) {
+	return r.RunWithOptions(ctx, scanID, RunOptions{})
+}
+
+// RunWithOptions performs a baseline pass; when opts.Force is false an existing successful pass is skipped.
+func (r *Runner) RunWithOptions(ctx context.Context, scanID string, opts RunOptions) (Result, error) {
 	if r.MaxBody <= 0 {
 		r.MaxBody = 2 << 20
 	}
 	scan, err := r.Store.GetScan(ctx, scanID)
 	if err != nil {
 		return Result{}, err
+	}
+	if !opts.Force && scan.BaselineRunStatus == "succeeded" && scan.BaselineEndpointsTotal > 0 &&
+		scan.BaselineEndpointsDone >= scan.BaselineEndpointsTotal {
+		return Result{
+			Status:            "succeeded",
+			EndpointsTotal:    scan.BaselineEndpointsTotal,
+			EndpointsExecuted: scan.BaselineEndpointsDone,
+		}, nil
 	}
 	baseStr := strings.TrimSpace(scan.BaseURL)
 	if baseStr == "" {

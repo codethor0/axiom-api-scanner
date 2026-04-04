@@ -32,6 +32,12 @@ type ScanRepository interface {
 	ApplyControl(ctx context.Context, id string, action ScanControlAction) (engine.Scan, error)
 }
 
+// ScanRunRepository persists orchestration phase and run-level errors.
+type ScanRunRepository interface {
+	PatchScanRunPhase(ctx context.Context, id string, phase engine.ScanRunPhase, runErr string) error
+	SetScanStatusAndRunPhase(ctx context.Context, id string, status engine.ScanStatus, phase engine.ScanRunPhase, runErr string) error
+}
+
 // ScanTargetRepository updates scope and credentials for a scan.
 type ScanTargetRepository interface {
 	PatchScanTarget(ctx context.Context, id string, in PatchScanTargetInput) (engine.Scan, error)
@@ -91,6 +97,7 @@ type FindingListFilter struct {
 type ExecutionRepository interface {
 	InsertExecutionRecord(ctx context.Context, rec engine.ExecutionRecord) (string, error)
 	GetLatestExecution(ctx context.Context, scanID, scanEndpointID string, phase engine.ExecutionPhase) (engine.ExecutionRecord, error)
+	GetMutationByCandidate(ctx context.Context, scanID, scanEndpointID, ruleID, candidateKey string) (engine.ExecutionRecord, error)
 	ListExecutions(ctx context.Context, scanID string, filter ExecutionListFilter) ([]engine.ExecutionRecord, error)
 	GetExecution(ctx context.Context, scanID, executionID string) (engine.ExecutionRecord, error)
 }
@@ -131,6 +138,7 @@ type CreateFindingInput struct {
 type FindingRepository interface {
 	ListByScanID(ctx context.Context, scanID string, filter FindingListFilter) ([]findings.Finding, error)
 	GetByID(ctx context.Context, id string) (findings.Finding, error)
+	GetByEvidenceTuple(ctx context.Context, scanID, ruleID, scanEndpointID, baselineExecutionID, mutatedExecutionID string) (findings.Finding, error)
 	CreateFinding(ctx context.Context, in CreateFindingInput) (findings.Finding, error)
 }
 
