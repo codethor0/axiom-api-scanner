@@ -23,6 +23,16 @@ const (
 	FindingListSortSeverity  = "severity"
 )
 
+// Endpoint list sorting (deterministic tie-break: id).
+const (
+	// EndpointListSortPath orders by path_template, method, id (default; stable import identity).
+	EndpointListSortPath = "path"
+	// EndpointListSortMethod orders by method, path_template, id.
+	EndpointListSortMethod = "method"
+	// EndpointListSortCreatedAt orders by created_at, id.
+	EndpointListSortCreatedAt = "created_at"
+)
+
 // ListSortAsc / ListSortDesc are supported order values.
 const (
 	ListSortAsc  = "asc"
@@ -55,6 +65,21 @@ type FindingListPageOptions struct {
 // FindingListPage is one page of findings plus continuation.
 type FindingListPage struct {
 	Records    []findings.Finding
+	NextCursor string
+	HasMore    bool
+}
+
+// EndpointListPageOptions configures one endpoint inventory HTTP page.
+type EndpointListPageOptions struct {
+	Limit     int
+	SortField string
+	SortOrder string
+	Cursor    string
+}
+
+// EndpointListPage is one page of endpoint inventory rows plus continuation.
+type EndpointListPage struct {
+	Records    []EndpointInventoryEntry
 	NextCursor string
 	HasMore    bool
 }

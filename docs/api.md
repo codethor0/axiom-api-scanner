@@ -132,7 +132,21 @@ Body: raw OpenAPI 3.x YAML or JSON (same limits as global validate). Persists en
 
 ### GET /v1/scans/{scanID}/endpoints
 
-Returns **`200`** with a JSON object: **`items`** (array of **endpoint read** objects), same stable envelope pattern as execution/finding lists.
+Returns **`200`** with a JSON object: **`items`** (array of **endpoint read** objects) and **`meta`** (pagination), same stable envelope pattern as execution/finding lists.
+
+**`meta` fields:** `limit` (requested page size, default 50, max 200), `sort`, `order` (`asc` or `desc`), `has_more`, optional `next_cursor` (opaque; pass as `cursor` for the next page).
+
+**Pagination:** Keyset (**cursor**) only; **`offset` is rejected** with **`400`** `unsupported_query_parameter`. Cursors are valid only for the same `sort` and `order` as the request that produced them.
+
+**Supported `sort` values (deterministic; UUID `id` tie-breaks when paths/methods/timestamps match):**
+
+| `sort` | Ordering |
+| --- | --- |
+| `path` (default) | `path_template`, `method`, `id` |
+| `method` | `method`, `path_template`, `id` |
+| `created_at` | `created_at`, `id` |
+
+Unsupported `sort` → **`400`** `invalid_sort`. Bad `order` → **`400`** `invalid_order`. Bad or mismatched `cursor` → **`400`** `invalid_cursor`.
 
 **Endpoint read** fields:
 
@@ -155,7 +169,7 @@ Returns **`200`** with a JSON object: **`items`** (array of **endpoint read** ob
 
 Invalid `include_summary` or `declares_security` values return **`400`** `invalid_query`.
 
-Ordering is deterministic: `path_template` ascending, then `method` ascending (unchanged from storage).
+**Limitations:** There is no total-count field; clients page with `has_more` / `next_cursor` only. Very large imports still require multiple requests to walk the full inventory.
 
 ### POST /v1/scans/{scanID}/executions/baseline
 

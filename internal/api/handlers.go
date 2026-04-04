@@ -268,13 +268,31 @@ func (h *Handler) listScanEndpoints(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, reqErr.code, reqErr.message)
 		return
 	}
-	entries, err := h.Endpoints.ListEndpointInventory(r.Context(), id, listFilter.storageFilter, storage.EndpointInventoryOptions{IncludeSummary: listFilter.includeSummary})
+	pageOpts, perr := parseEndpointListPageParams(r)
+	if perr != nil {
+		writeAPIError(w, http.StatusBadRequest, perr.code, perr.message)
+		return
+	}
+	page, err := h.Endpoints.ListEndpointInventoryPage(r.Context(), id, listFilter.storageFilter, storage.EndpointInventoryOptions{IncludeSummary: listFilter.includeSummary}, pageOpts)
 	if err != nil {
+		if errors.Is(err, storage.ErrInvalidListCursor) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or does not match sort and order")
+			return
+		}
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
 		return
 	}
-	out := EndpointListResponse{Items: make([]EndpointRead, 0, len(entries))}
-	for _, ent := range entries {
+	out := EndpointListResponse{
+		Items: make([]EndpointRead, 0, len(page.Records)),
+		Meta: ListPageMeta{
+			Limit:      pageOpts.Limit,
+			Sort:       pageOpts.SortField,
+			Order:      pageOpts.SortOrder,
+			NextCursor: page.NextCursor,
+			HasMore:    page.HasMore,
+		},
+	}
+	for _, ent := range page.Records {
 		out.Items = append(out.Items, endpointReadFromInventory(ent, listFilter.includeSummary))
 	}
 	writeJSON(w, http.StatusOK, out)

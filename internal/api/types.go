@@ -52,6 +52,7 @@ type EndpointRead struct {
 // EndpointListResponse is the wire envelope for GET /v1/scans/{scanID}/endpoints.
 type EndpointListResponse struct {
 	Items []EndpointRead `json:"items"`
+	Meta  ListPageMeta   `json:"meta"`
 }
 
 // ScanControlRequest transitions scan lifecycle state.

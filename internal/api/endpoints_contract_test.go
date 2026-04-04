@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -29,6 +30,8 @@ var endpointSummaryKeys = []string{
 	"mutation_executions_recorded",
 	"findings_recorded",
 }
+
+var endpointListMetaKeys = []string{"limit", "sort", "order", "has_more"}
 
 func TestContract_endpointList_wireEnvelope(t *testing.T) {
 	mem := newMemRepositories()
@@ -81,11 +84,33 @@ func TestContract_endpointList_wireEnvelope(t *testing.T) {
 		t.Fatalf("status %d %s", resp.StatusCode, b)
 	}
 	var env EndpointListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		t.Fatal(err)
+	if derr := json.NewDecoder(resp.Body).Decode(&env); derr != nil {
+		t.Fatal(derr)
 	}
 	if env.Items == nil {
 		t.Fatal("want items non-nil slice")
+	}
+	metaObj, err := json.Marshal(env.Meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metaMap map[string]json.RawMessage
+	if err := json.Unmarshal(metaObj, &metaMap); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range endpointListMetaKeys {
+		if _, ok := metaMap[k]; !ok {
+			t.Fatalf("meta missing key %q", k)
+		}
+	}
+	if env.Meta.Limit != storage.DefaultListLimit || env.Meta.Sort != storage.EndpointListSortPath || env.Meta.Order != storage.ListSortAsc {
+		t.Fatalf("meta %+v", env.Meta)
+	}
+	if env.Meta.HasMore {
+		t.Fatal("expected has_more false")
+	}
+	if env.Meta.NextCursor != "" {
+		t.Fatal("unexpected next_cursor on first page")
 	}
 	if len(env.Items) != 2 {
 		t.Fatalf("want 2 items, got %d", len(env.Items))
@@ -169,6 +194,9 @@ func TestContract_endpointList_includeSummaryFalseOmitsSummary(t *testing.T) {
 	if strings.Contains(string(body), `"summary"`) {
 		t.Fatalf("response should omit summary key: %s", body)
 	}
+	if env.Meta.Limit != storage.DefaultListLimit {
+		t.Fatalf("meta %+v", env.Meta)
+	}
 }
 
 func TestContract_endpointList_filterMethodAndSecurity(t *testing.T) {
@@ -202,6 +230,63 @@ func TestContract_endpointList_filterMethodAndSecurity(t *testing.T) {
 	if env.Items[0].DeclaresOpenAPISecurity != true {
 		t.Fatal(env.Items[0])
 	}
+	if env.Meta.Sort != storage.EndpointListSortPath {
+		t.Fatal(env.Meta)
+	}
+}
+
+func TestContract_endpointList_keysetSecondPage(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	specs := []engine.EndpointSpec{
+		{Method: "GET", Path: "/z"},
+		{Method: "GET", Path: "/a"},
+		{Method: "POST", Path: "/a"},
+	}
+	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, specs); rerr != nil {
+		t.Fatal(rerr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	base := srv.URL + "/v1/scans/" + scan.ID + "/endpoints?include_summary=false&limit=2&sort=path&order=asc"
+
+	resp1, err := http.Get(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp1.Body.Close() }()
+	var first EndpointListResponse
+	if derr := json.NewDecoder(resp1.Body).Decode(&first); derr != nil {
+		t.Fatal(derr)
+	}
+	if len(first.Items) != 2 || !first.Meta.HasMore || first.Meta.NextCursor == "" {
+		t.Fatalf("first page: %+v meta=%+v", first.Items, first.Meta)
+	}
+	if first.Items[0].PathTemplate != "/a" || first.Items[0].Method != "GET" {
+		t.Fatalf("order want GET /a first, got %s %s", first.Items[0].Method, first.Items[0].PathTemplate)
+	}
+	resp2, err := http.Get(base + "&cursor=" + url.QueryEscape(first.Meta.NextCursor))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp2.Body.Close() }()
+	var second EndpointListResponse
+	if derr := json.NewDecoder(resp2.Body).Decode(&second); derr != nil {
+		t.Fatal(derr)
+	}
+	if len(second.Items) != 1 {
+		t.Fatalf("second page len %d", len(second.Items))
+	}
+	if second.Meta.HasMore || second.Meta.NextCursor != "" {
+		t.Fatalf("second meta %+v", second.Meta)
+	}
+	if second.Items[0].PathTemplate != "/z" {
+		t.Fatalf("got %+v", second.Items[0])
+	}
 }
 
 func TestContract_endpointList_invalidQuery(t *testing.T) {
@@ -217,6 +302,95 @@ func TestContract_endpointList_invalidQuery(t *testing.T) {
 	_ = cr.Body.Close()
 
 	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/endpoints?include_summary=maybe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestContract_endpointList_invalidSortAndOffset(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	base := srv.URL + "/v1/scans/" + scan.ID + "/endpoints"
+
+	r1, err := http.Get(base + "?sort=severity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r1.Body.Close()
+	if r1.StatusCode != http.StatusBadRequest {
+		t.Fatalf("sort severity: status %d", r1.StatusCode)
+	}
+	r2, err := http.Get(base + "?offset=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r2.Body.Close()
+	if r2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("offset: status %d", r2.StatusCode)
+	}
+}
+
+func TestContract_endpointList_badCursor(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/endpoints?cursor=not-a-valid-cursor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestContract_endpointList_cursorRequiresMatchingSort(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{
+		{Method: "GET", Path: "/a"},
+		{Method: "GET", Path: "/b"},
+	}); rerr != nil {
+		t.Fatal(rerr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	cur := ""
+	{
+		rpath, gerr := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/endpoints?limit=1&sort=path&order=asc&include_summary=false")
+		if gerr != nil {
+			t.Fatal(gerr)
+		}
+		var env EndpointListResponse
+		if derr := json.NewDecoder(rpath.Body).Decode(&env); derr != nil {
+			t.Fatal(derr)
+		}
+		_ = rpath.Body.Close()
+		cur = env.Meta.NextCursor
+		if cur == "" {
+			t.Fatal("want next_cursor")
+		}
+	}
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/endpoints?limit=1&sort=method&order=asc&include_summary=false&cursor=" + url.QueryEscape(cur))
 	if err != nil {
 		t.Fatal(err)
 	}

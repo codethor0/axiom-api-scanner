@@ -44,6 +44,45 @@ func parseEndpointListParams(r *http.Request) (parsedEndpointListParams, *apiReq
 	return out, nil
 }
 
+func parseEndpointListPageParams(r *http.Request) (storage.EndpointListPageOptions, *apiRequestError) {
+	q := r.URL.Query()
+	if _, ok := q["offset"]; ok {
+		return storage.EndpointListPageOptions{}, &apiRequestError{code: "unsupported_query_parameter", message: "offset is not supported; use cursor-based pagination"}
+	}
+	opts := storage.EndpointListPageOptions{
+		SortField: storage.EndpointListSortPath,
+		SortOrder: storage.ListSortAsc,
+		Cursor:    strings.TrimSpace(q.Get("cursor")),
+	}
+	if v := strings.TrimSpace(q.Get("sort")); v != "" {
+		switch v {
+		case storage.EndpointListSortPath, storage.EndpointListSortMethod, storage.EndpointListSortCreatedAt:
+			opts.SortField = v
+		default:
+			return storage.EndpointListPageOptions{}, &apiRequestError{code: "invalid_sort", message: "sort must be path, method, or created_at for endpoints"}
+		}
+	}
+	if v := strings.TrimSpace(q.Get("order")); v != "" {
+		switch strings.ToLower(v) {
+		case storage.ListSortAsc, storage.ListSortDesc:
+			opts.SortOrder = strings.ToLower(v)
+		default:
+			return storage.EndpointListPageOptions{}, &apiRequestError{code: "invalid_order", message: "order must be asc or desc"}
+		}
+	}
+	ls := strings.TrimSpace(q.Get("limit"))
+	if ls == "" {
+		opts.Limit = storage.DefaultListLimit
+	} else {
+		n, err := strconv.Atoi(ls)
+		if err != nil || n < 1 || n > storage.MaxListLimit {
+			return storage.EndpointListPageOptions{}, &apiRequestError{code: "invalid_limit", message: "limit must be between 1 and 200"}
+		}
+		opts.Limit = n
+	}
+	return opts, nil
+}
+
 func parseExecutionListPageParams(r *http.Request) (storage.ExecutionListPageOptions, *apiRequestError) {
 	q := r.URL.Query()
 	if _, ok := q["offset"]; ok {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
@@ -62,7 +63,7 @@ SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
        se.security_scheme_hints::text, se.request_content_types::text, se.response_content_types::text,
        se.request_body_json, se.created_at
 FROM scan_endpoints se WHERE se.scan_id = $1` + andFrag + `
-ORDER BY se.path_template ASC, se.method ASC`
+ORDER BY se.path_template ASC, se.method ASC, se.id ASC`
 	args := append([]any{scanID}, fargs...)
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
@@ -96,22 +97,32 @@ ORDER BY se.path_template ASC, se.method ASC`
 	return list, rows.Err()
 }
 
-// ListEndpointInventory lists endpoints with optional persisted execution/finding counts per endpoint row.
-func (s *Store) ListEndpointInventory(ctx context.Context, scanID string, filter storage.EndpointListFilter, opt storage.EndpointInventoryOptions) ([]storage.EndpointInventoryEntry, error) {
+// ListEndpointInventoryPage returns one page of endpoint inventory using opaque keyset cursors (same family as executions/findings lists).
+func (s *Store) ListEndpointInventoryPage(ctx context.Context, scanID string, filter storage.EndpointListFilter, opt storage.EndpointInventoryOptions, opts storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
+	if opts.Limit <= 0 {
+		return storage.EndpointListPage{}, fmt.Errorf("list endpoint inventory page: invalid limit")
+	}
+	sf := strings.TrimSpace(opts.SortField)
+	if sf == "" {
+		sf = storage.EndpointListSortPath
+	}
+	o := strings.TrimSpace(opts.SortOrder)
+	if o == "" {
+		o = storage.ListSortAsc
+	}
+	switch sf {
+	case storage.EndpointListSortPath, storage.EndpointListSortMethod, storage.EndpointListSortCreatedAt:
+	default:
+		return storage.EndpointListPage{}, fmt.Errorf("list endpoint inventory page: invalid sort")
+	}
+
 	andFrag, fargs := endpointListAndClause(filter, 2)
 	args := append([]any{scanID}, fargs...)
-	if !opt.IncludeSummary {
-		eps, err := s.ListScanEndpoints(ctx, scanID, filter)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]storage.EndpointInventoryEntry, len(eps))
-		for i := range eps {
-			out[i] = storage.EndpointInventoryEntry{Endpoint: eps[i]}
-		}
-		return out, nil
-	}
-	invSelect := `
+	n := 2 + len(fargs)
+
+	var baseQ string
+	if opt.IncludeSummary {
+		baseQ = `
 WITH b AS (
   SELECT scan_endpoint_id, COUNT(*)::int AS n FROM execution_records
   WHERE scan_id = $1 AND phase = 'baseline' AND scan_endpoint_id IS NOT NULL
@@ -135,39 +146,98 @@ FROM scan_endpoints se
 LEFT JOIN b ON b.scan_endpoint_id = se.id
 LEFT JOIN m ON m.scan_endpoint_id = se.id
 LEFT JOIN f ON f.scan_endpoint_id = se.id
-WHERE se.scan_id = $1` + andFrag + `
-ORDER BY se.path_template ASC, se.method ASC`
-	rows, err := s.pool.Query(ctx, invSelect, args...)
+WHERE se.scan_id = $1` + andFrag
+	} else {
+		baseQ = `
+SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
+       se.security_scheme_hints::text, se.request_content_types::text, se.response_content_types::text,
+       se.request_body_json, se.created_at
+FROM scan_endpoints se
+WHERE se.scan_id = $1` + andFrag
+	}
+
+	q := baseQ
+	if strings.TrimSpace(opts.Cursor) != "" {
+		path, method, id, ca, err := storage.DecodeEndpointCursor(opts.Cursor, sf, o)
+		if err != nil {
+			return storage.EndpointListPage{}, err
+		}
+		frag, cargs, nextN := endpointKeysetSQLAndArgs(sf, o, path, method, id, ca, n)
+		q += frag
+		args = append(args, cargs...)
+		n = nextN
+	}
+
+	q += " ORDER BY " + endpointOrderSQL(sf, o)
+	q += fmt.Sprintf(" LIMIT $%d", n)
+	args = append(args, opts.Limit+1)
+
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list endpoint inventory: %w", err)
+		return storage.EndpointListPage{}, fmt.Errorf("list endpoint inventory page: %w", err)
 	}
 	defer rows.Close()
+
 	var list []storage.EndpointInventoryEntry
 	for rows.Next() {
-		var e engine.ScanEndpoint
 		var hints, reqC, respC string
-		var sum storage.EndpointInventorySummary
-		if err := rows.Scan(
-			&e.ID,
-			&e.ScanID,
-			&e.Method,
-			&e.PathTemplate,
-			&e.OperationID,
-			&hints,
-			&reqC,
-			&respC,
-			&e.RequestBodyJSON,
-			&e.CreatedAt,
-			&sum.BaselineExecutionsRecorded,
-			&sum.MutationExecutionsRecorded,
-			&sum.FindingsRecorded,
-		); err != nil {
-			return nil, err
+		var ent storage.EndpointInventoryEntry
+		if opt.IncludeSummary {
+			var sum storage.EndpointInventorySummary
+			if err := rows.Scan(
+				&ent.Endpoint.ID,
+				&ent.Endpoint.ScanID,
+				&ent.Endpoint.Method,
+				&ent.Endpoint.PathTemplate,
+				&ent.Endpoint.OperationID,
+				&hints,
+				&reqC,
+				&respC,
+				&ent.Endpoint.RequestBodyJSON,
+				&ent.Endpoint.CreatedAt,
+				&sum.BaselineExecutionsRecorded,
+				&sum.MutationExecutionsRecorded,
+				&sum.FindingsRecorded,
+			); err != nil {
+				return storage.EndpointListPage{}, err
+			}
+			ent.Summary = sum
+		} else {
+			if err := rows.Scan(
+				&ent.Endpoint.ID,
+				&ent.Endpoint.ScanID,
+				&ent.Endpoint.Method,
+				&ent.Endpoint.PathTemplate,
+				&ent.Endpoint.OperationID,
+				&hints,
+				&reqC,
+				&respC,
+				&ent.Endpoint.RequestBodyJSON,
+				&ent.Endpoint.CreatedAt,
+			); err != nil {
+				return storage.EndpointListPage{}, err
+			}
 		}
-		_ = json.Unmarshal([]byte(hints), &e.SecuritySchemeHints)
-		_ = json.Unmarshal([]byte(reqC), &e.RequestContentTypes)
-		_ = json.Unmarshal([]byte(respC), &e.ResponseContentTypes)
-		list = append(list, storage.EndpointInventoryEntry{Endpoint: e, Summary: sum})
+		_ = json.Unmarshal([]byte(hints), &ent.Endpoint.SecuritySchemeHints)
+		_ = json.Unmarshal([]byte(reqC), &ent.Endpoint.RequestContentTypes)
+		_ = json.Unmarshal([]byte(respC), &ent.Endpoint.ResponseContentTypes)
+		list = append(list, ent)
 	}
-	return list, rows.Err()
+	if err := rows.Err(); err != nil {
+		return storage.EndpointListPage{}, err
+	}
+
+	hasMore := len(list) > opts.Limit
+	if hasMore {
+		list = list[:opts.Limit]
+	}
+	out := storage.EndpointListPage{Records: list, HasMore: hasMore}
+	if hasMore && len(list) > 0 {
+		cur, err := storage.EncodeEndpointPageCursor(sf, o, list[len(list)-1])
+		if err != nil {
+			return storage.EndpointListPage{}, err
+		}
+		out.NextCursor = cur
+	}
+	return out, nil
 }

@@ -3,12 +3,53 @@ package postgres
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
+func endpointOrderSQL(sortField, sortOrder string) string {
+	asc := strings.EqualFold(sortOrder, storage.ListSortAsc)
+	dir := " ASC"
+	if !asc {
+		dir = " DESC"
+	}
+	switch strings.TrimSpace(sortField) {
+	case storage.EndpointListSortMethod:
+		return "se.method" + dir + ", se.path_template" + dir + ", se.id" + dir
+	case storage.EndpointListSortCreatedAt:
+		return "se.created_at" + dir + ", se.id" + dir
+	default:
+		return "se.path_template" + dir + ", se.method" + dir + ", se.id" + dir
+	}
+}
+
+// endpointKeysetSQLAndArgs appends a tuple keyset predicate; argStart is the next $ slot number.
+func endpointKeysetSQLAndArgs(sortField, sortOrder string, path, method, id string, createdAt time.Time, argStart int) (frag string, args []any, nextIdx int) {
+	asc := strings.EqualFold(sortOrder, storage.ListSortAsc)
+	op := ">"
+	if !asc {
+		op = "<"
+	}
+	n := argStart
+	switch strings.TrimSpace(sortField) {
+	case storage.EndpointListSortMethod:
+		frag = fmt.Sprintf(` AND (se.method, se.path_template, se.id) %s ($%d::text, $%d::text, $%d::uuid)`, op, n, n+1, n+2)
+		args = []any{method, path, id}
+		return frag, args, n + 3
+	case storage.EndpointListSortCreatedAt:
+		frag = fmt.Sprintf(` AND (se.created_at, se.id) %s ($%d::timestamptz, $%d::uuid)`, op, n, n+1)
+		args = []any{createdAt, id}
+		return frag, args, n + 2
+	default:
+		frag = fmt.Sprintf(` AND (se.path_template, se.method, se.id) %s ($%d::text, $%d::text, $%d::uuid)`, op, n, n+1, n+2)
+		args = []any{path, method, id}
+		return frag, args, n + 3
+	}
+}
+
 // endpointListAndClause returns SQL AND-fragment (empty or " AND cond ...") and bind args starting at argStart.
-// Caller always appends " ORDER BY se.path_template ASC, se.method ASC".
+// Callers append keyset predicates and ORDER BY (see endpointOrderSQL).
 func endpointListAndClause(filter storage.EndpointListFilter, argStart int) (string, []any) {
 	var conds []string
 	args := []any{}

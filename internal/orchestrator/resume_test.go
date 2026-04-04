@@ -2,6 +2,9 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
@@ -92,16 +95,66 @@ func (s *stubResumeStore) ListScanEndpoints(_ context.Context, scanID string, _ 
 	}
 	return s.endpoints, nil
 }
-func (s *stubResumeStore) ListEndpointInventory(ctx context.Context, scanID string, filter storage.EndpointListFilter, _ storage.EndpointInventoryOptions) ([]storage.EndpointInventoryEntry, error) {
+func (s *stubResumeStore) ListEndpointInventoryPage(ctx context.Context, scanID string, filter storage.EndpointListFilter, _ storage.EndpointInventoryOptions, page storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
+	if page.Limit <= 0 {
+		return storage.EndpointListPage{}, fmt.Errorf("invalid limit")
+	}
 	eps, err := s.ListScanEndpoints(ctx, scanID, filter)
 	if err != nil {
-		return nil, err
+		return storage.EndpointListPage{}, err
 	}
 	out := make([]storage.EndpointInventoryEntry, len(eps))
 	for i, ep := range eps {
 		out[i] = storage.EndpointInventoryEntry{Endpoint: ep}
 	}
-	return out, nil
+	o := strings.TrimSpace(page.SortOrder)
+	if o == "" {
+		o = storage.ListSortAsc
+	}
+	sf := strings.TrimSpace(page.SortField)
+	if sf == "" {
+		sf = storage.EndpointListSortPath
+	}
+	asc := strings.EqualFold(o, storage.ListSortAsc)
+	sort.SliceStable(out, func(i, j int) bool {
+		return storage.EndpointLess(out[i].Endpoint, out[j].Endpoint, sf, asc)
+	})
+	start := 0
+	if strings.TrimSpace(page.Cursor) != "" {
+		path, method, id, ca, derr := storage.DecodeEndpointCursor(page.Cursor, sf, o)
+		if derr != nil {
+			return storage.EndpointListPage{}, derr
+		}
+		found := false
+		for i := range out {
+			if storage.EndpointKeysetAfter(out[i].Endpoint, path, method, id, ca, sf, asc) {
+				start = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			start = len(out)
+		}
+	}
+	end := start + page.Limit + 1
+	if end > len(out) {
+		end = len(out)
+	}
+	recs := out[start:end]
+	hasMore := len(recs) > page.Limit
+	if hasMore {
+		recs = recs[:page.Limit]
+	}
+	p := storage.EndpointListPage{Records: recs, HasMore: hasMore}
+	if hasMore && len(recs) > 0 {
+		cur, cerr := storage.EncodeEndpointPageCursor(sf, o, recs[len(recs)-1])
+		if cerr != nil {
+			return storage.EndpointListPage{}, cerr
+		}
+		p.NextCursor = cur
+	}
+	return p, nil
 }
 func (s *stubResumeStore) UpdateBaselineState(_ context.Context, scanID string, st storage.BaselineState) error {
 	if s.scan.ID != scanID {

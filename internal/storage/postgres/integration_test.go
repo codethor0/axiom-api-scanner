@@ -355,17 +355,21 @@ func TestFindingWrite_integration(t *testing.T) {
 		}
 	}
 
-	inv, err := s.ListEndpointInventory(ctx, scan.ID, storage.EndpointListFilter{}, storage.EndpointInventoryOptions{IncludeSummary: true})
+	inv, err := s.ListEndpointInventoryPage(ctx, scan.ID, storage.EndpointListFilter{}, storage.EndpointInventoryOptions{IncludeSummary: true}, storage.EndpointListPageOptions{
+		Limit:     200,
+		SortField: storage.EndpointListSortPath,
+		SortOrder: storage.ListSortAsc,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(inv) != 1 {
-		t.Fatalf("ListEndpointInventory len %d", len(inv))
+	if len(inv.Records) != 1 {
+		t.Fatalf("ListEndpointInventoryPage len %d", len(inv.Records))
 	}
-	if inv[0].Endpoint.ID != ep.ID {
-		t.Fatalf("endpoint id mismatch %s vs %s", inv[0].Endpoint.ID, ep.ID)
+	if inv.Records[0].Endpoint.ID != ep.ID {
+		t.Fatalf("endpoint id mismatch %s vs %s", inv.Records[0].Endpoint.ID, ep.ID)
 	}
-	if inv[0].Summary.BaselineExecutionsRecorded != 1 || inv[0].Summary.MutationExecutionsRecorded != 1 || inv[0].Summary.FindingsRecorded != 1 {
-		t.Fatalf("ListEndpointInventory summary %+v", inv[0].Summary)
+	if inv.Records[0].Summary.BaselineExecutionsRecorded != 1 || inv.Records[0].Summary.MutationExecutionsRecorded != 1 || inv.Records[0].Summary.FindingsRecorded != 1 {
+		t.Fatalf("ListEndpointInventoryPage summary %+v", inv.Records[0].Summary)
 	}
 }

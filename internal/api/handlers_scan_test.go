@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -143,7 +144,10 @@ func (m *memRepositories) ListScanEndpoints(_ context.Context, scanID string, fi
 	return out, nil
 }
 
-func (m *memRepositories) ListEndpointInventory(_ context.Context, scanID string, filter storage.EndpointListFilter, opt storage.EndpointInventoryOptions) ([]storage.EndpointInventoryEntry, error) {
+func (m *memRepositories) ListEndpointInventoryPage(_ context.Context, scanID string, filter storage.EndpointListFilter, opt storage.EndpointInventoryOptions, opts storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
+	if opts.Limit <= 0 {
+		return storage.EndpointListPage{}, fmt.Errorf("list endpoint inventory page: invalid limit")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var eps []engine.ScanEndpoint
@@ -152,13 +156,7 @@ func (m *memRepositories) ListEndpointInventory(_ context.Context, scanID string
 			eps = append(eps, ep)
 		}
 	}
-	sort.SliceStable(eps, func(i, j int) bool {
-		if eps[i].PathTemplate != eps[j].PathTemplate {
-			return eps[i].PathTemplate < eps[j].PathTemplate
-		}
-		return strings.TrimSpace(eps[i].Method) < strings.TrimSpace(eps[j].Method)
-	})
-	out := make([]storage.EndpointInventoryEntry, len(eps))
+	ents := make([]storage.EndpointInventoryEntry, len(eps))
 	for i, ep := range eps {
 		ent := storage.EndpointInventoryEntry{Endpoint: ep}
 		if opt.IncludeSummary {
@@ -181,7 +179,59 @@ func (m *memRepositories) ListEndpointInventory(_ context.Context, scanID string
 			}
 			ent.Summary = sum
 		}
-		out[i] = ent
+		ents[i] = ent
+	}
+	o := strings.TrimSpace(opts.SortOrder)
+	if o == "" {
+		o = storage.ListSortAsc
+	}
+	sf := strings.TrimSpace(opts.SortField)
+	if sf == "" {
+		sf = storage.EndpointListSortPath
+	}
+	switch sf {
+	case storage.EndpointListSortPath, storage.EndpointListSortMethod, storage.EndpointListSortCreatedAt:
+	default:
+		return storage.EndpointListPage{}, fmt.Errorf("list endpoint inventory page: invalid sort")
+	}
+	asc := strings.EqualFold(o, storage.ListSortAsc)
+	sort.SliceStable(ents, func(i, j int) bool {
+		return storage.EndpointLess(ents[i].Endpoint, ents[j].Endpoint, sf, asc)
+	})
+	start := 0
+	if strings.TrimSpace(opts.Cursor) != "" {
+		path, method, id, ca, err := storage.DecodeEndpointCursor(opts.Cursor, sf, o)
+		if err != nil {
+			return storage.EndpointListPage{}, err
+		}
+		found := false
+		for i := range ents {
+			if storage.EndpointKeysetAfter(ents[i].Endpoint, path, method, id, ca, sf, asc) {
+				start = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			start = len(ents)
+		}
+	}
+	end := start + opts.Limit + 1
+	if end > len(ents) {
+		end = len(ents)
+	}
+	page := ents[start:end]
+	hasMore := len(page) > opts.Limit
+	if hasMore {
+		page = page[:opts.Limit]
+	}
+	out := storage.EndpointListPage{Records: page, HasMore: hasMore}
+	if hasMore && len(page) > 0 {
+		cur, err := storage.EncodeEndpointPageCursor(sf, o, page[len(page)-1])
+		if err != nil {
+			return storage.EndpointListPage{}, err
+		}
+		out.NextCursor = cur
 	}
 	return out, nil
 }

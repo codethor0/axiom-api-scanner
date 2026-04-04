@@ -43,7 +43,7 @@ type EndpointInventoryEntry struct {
 	Summary  EndpointInventorySummary
 }
 
-// EndpointInventoryOptions configures ListEndpointInventory (summary joins are skipped when IncludeSummary is false).
+// EndpointInventoryOptions configures endpoint inventory list pages (summary joins are skipped when IncludeSummary is false).
 type EndpointInventoryOptions struct {
 	IncludeSummary bool
 }

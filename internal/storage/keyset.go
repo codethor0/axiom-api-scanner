@@ -179,6 +179,139 @@ func FindingLess(a, b findings.Finding, sortField string, asc bool) bool {
 	return findingCmp(a, b, sortField) > 0
 }
 
+// EndpointLess compares two scan endpoints for stable list ordering.
+func EndpointLess(a, b engine.ScanEndpoint, sortField string, asc bool) bool {
+	if asc {
+		return endpointCmp(a, b, sortField) < 0
+	}
+	return endpointCmp(a, b, sortField) > 0
+}
+
+func endpointCmp(a, b engine.ScanEndpoint, sortField string) int {
+	switch sortField {
+	case EndpointListSortMethod:
+		c := strings.Compare(strings.TrimSpace(a.Method), strings.TrimSpace(b.Method))
+		if c != 0 {
+			return c
+		}
+		c = strings.Compare(a.PathTemplate, b.PathTemplate)
+		if c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	case EndpointListSortCreatedAt:
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return -1
+		}
+		if a.CreatedAt.After(b.CreatedAt) {
+			return 1
+		}
+		return strings.Compare(a.ID, b.ID)
+	default:
+		c := strings.Compare(a.PathTemplate, b.PathTemplate)
+		if c != 0 {
+			return c
+		}
+		c = strings.Compare(strings.TrimSpace(a.Method), strings.TrimSpace(b.Method))
+		if c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	}
+}
+
+// EndpointKeysetAfter returns true if ep sorts strictly after the decoded cursor tuple.
+func EndpointKeysetAfter(ep engine.ScanEndpoint, pathTemplate, method, id string, createdAt time.Time, sortField string, asc bool) bool {
+	id = strings.TrimSpace(id)
+	method = strings.TrimSpace(method)
+	pathTemplate = strings.TrimSpace(pathTemplate)
+	switch sortField {
+	case EndpointListSortMethod:
+		if asc {
+			cm := strings.Compare(strings.TrimSpace(ep.Method), method)
+			if cm > 0 {
+				return true
+			}
+			if cm < 0 {
+				return false
+			}
+			cp := strings.Compare(ep.PathTemplate, pathTemplate)
+			if cp > 0 {
+				return true
+			}
+			if cp < 0 {
+				return false
+			}
+			return strings.Compare(ep.ID, id) > 0
+		}
+		cm := strings.Compare(strings.TrimSpace(ep.Method), method)
+		if cm < 0 {
+			return true
+		}
+		if cm > 0 {
+			return false
+		}
+		cp := strings.Compare(ep.PathTemplate, pathTemplate)
+		if cp < 0 {
+			return true
+		}
+		if cp > 0 {
+			return false
+		}
+		return strings.Compare(ep.ID, id) < 0
+	case EndpointListSortCreatedAt:
+		if asc {
+			if ep.CreatedAt.After(createdAt) {
+				return true
+			}
+			if ep.CreatedAt.Before(createdAt) {
+				return false
+			}
+			return strings.Compare(ep.ID, id) > 0
+		}
+		if ep.CreatedAt.Before(createdAt) {
+			return true
+		}
+		if ep.CreatedAt.After(createdAt) {
+			return false
+		}
+		return strings.Compare(ep.ID, id) < 0
+	default:
+		if asc {
+			cp := strings.Compare(ep.PathTemplate, pathTemplate)
+			if cp > 0 {
+				return true
+			}
+			if cp < 0 {
+				return false
+			}
+			cm := strings.Compare(strings.TrimSpace(ep.Method), method)
+			if cm > 0 {
+				return true
+			}
+			if cm < 0 {
+				return false
+			}
+			return strings.Compare(ep.ID, id) > 0
+		}
+		cp := strings.Compare(ep.PathTemplate, pathTemplate)
+		if cp < 0 {
+			return true
+		}
+		if cp > 0 {
+			return false
+		}
+		cm := strings.Compare(strings.TrimSpace(ep.Method), method)
+		if cm < 0 {
+			return true
+		}
+		if cm > 0 {
+			return false
+		}
+		return strings.Compare(ep.ID, id) < 0
+	}
+}
+
 func findingCmp(a, b findings.Finding, sortField string) int {
 	switch sortField {
 	case FindingListSortSeverity:
