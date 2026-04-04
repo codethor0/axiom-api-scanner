@@ -9,3 +9,4 @@
 .vscode/
 *.log
 /tmp/
+.cache/

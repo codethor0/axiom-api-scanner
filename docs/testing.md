@@ -14,7 +14,7 @@
 | Handler | Scan create, control, OpenAPI, PATCH scan, executions list/detail, baseline/mutations contract cases, scan run status/cancel and mem dedupe assertions using `httptest` and in-memory repository fakes (no database). |
 | Baseline | `internal/executor/baseline/runner_test` uses `httptest` plus in-memory store; performs one GET baseline. |
 | Integration | `internal/storage/postgres` when `AXIOM_TEST_DATABASE_URL` is set (runs `dbmigrate.Up` from `AXIOM_TEST_MIGRATIONS_DIR` or repo-root `migrations/`, through `000007_scan_run_orchestration` and earlier). |
-| End-to-end | `make e2e-local` / `scripts/e2e_local.sh`: Docker Postgres + local httpbin, Axiom API on the host, full import, baseline, mutations, findings read APIs, orchestrated `run` + second `resume` (see below). |
+| End-to-end | `make e2e-local` (httpbin plumbing) and `make e2e-crapi` (OWASP crAPI + same V1 checks); see **Local Docker end-to-end** below. |
 
 ## Fixtures
 
@@ -102,13 +102,40 @@ This runs `scripts/e2e_local.sh`, which:
 docker compose -f deploy/e2e/docker-compose.yml down
 ```
 
-**OWASP crAPI (primary API-security lab, not started by this script):** clone [OWASP/crAPI](https://github.com/OWASP/crAPI), then from `deploy/docker` run `docker compose -f docker-compose.yml --compatibility up -d` per upstream docs (web UI commonly `http://127.0.0.1:8888`). Do not run Axiom against crAPI until the stack is healthy. To experiment manually: create an Axiom scan with `base_url` pointing at crAPI’s gateway URL from their docs, import crAPI’s OpenAPI JSON when you have a stable URL from your deployment, then baseline/mutations or `POST .../run`. For automation, set `SKIP_CRAPI=0` and `CRAPI_OPENAPI_URL` before `./scripts/e2e_local.sh` (import-only smoke when the URL responds).
+### OWASP crAPI (intentionally vulnerable API)
+
+**Entrypoint:**
+
+```text
+docker info
+make e2e-crapi
+```
+
+This runs `scripts/e2e_crapi.sh`, which:
+
+1. **Clones** (first run only) `develop` [OWASP/crAPI](https://github.com/OWASP/crAPI) into `.cache/crapi` (gitignored).
+2. Runs **`docker compose -f docker-compose.yml --compatibility up -d`** from `.cache/crapi/deploy/docker` (upstream stack; multiple images).
+3. Waits for **`http://127.0.0.1:8888/health`** (`crapi-web`).
+4. Starts **Axiom Postgres** from `deploy/e2e/docker-compose.yml` (`axiom-pg` on `54334`) if not already up.
+5. Builds **`bin/axiom-api-e2e`**, listens on **`127.0.0.1:8080`**.
+6. Creates a scan with **`base_url` = `http://127.0.0.1:8888`** (matches the official spec `servers` in `openapi-spec/crapi-openapi-spec.json`).
+7. **`POST /v1/scans/{id}/specs/openapi`** with the **clone-local** `crapi-openapi-spec.json` (JSON), then **baseline**, **mutations**, **findings** list, **finding + evidence** GETs, and a second scan with orchestrated **`run`** `start` + `resume`.
+
+**OpenAPI source:** The spec is read from the **same commit as the cloned repo**, not from a live HTTP URL on crAPI (the gateway does not need to expose Swagger for import). Raw upstream URL for reference only: `https://raw.githubusercontent.com/OWASP/crAPI/develop/openapi-spec/crapi-openapi-spec.json`.
+
+**What is actually exercised:** V1 **GET** and **JSON POST** baseline/mutation paths against crAPI’s reachable operations; **safe** rules under `rules/` (planner-eligible operations only); **diff/matchers** and **finding + evidence_summary** persistence when matchers complete; **read APIs** for executions/findings; **orchestrator** idempotent `resume` after completion. Finding counts vary with rules and responses (automated run observed non-zero findings).
+
+**Not exercised in this harness:** crAPI **authenticated** sessions (no `auth_headers` / JWT setup in the script), browser-only flows, non–safe rule modes, Juice Shop, or coverage guarantees for every path in the spec.
+
+**Teardown crAPI:** from `.cache/crapi/deploy/docker`: `docker compose -f docker-compose.yml down` (destroys crAPI volumes if you add `-v`; only do that when you intend to reset lab data).
+
+**Ports:** crAPI uses **8888** (and upstream services use other host ports such as **8025** for Mailhog). Axiom e2e uses **8080** and **54334**. If **8080** is already taken by another process, set **`AXIOM_HTTP_ADDR`** (and matching **`AXIOM_URL`**) before running the script, or stop the conflicting listener; the script does not auto-pick a free port.
 
 **Juice Shop (secondary):** `docker compose -f deploy/e2e/docker-compose.yml --profile juice up -d` exposes `127.0.0.1:13000`. Prefer browser/app flows upstream; API OpenAPI varies by version—validate imports manually.
 
 **Swagger Petstore:** use only for harmless spec experiments if needed; prefer local httpbin for automation.
 
-**Known limitations:** `e2e-local` does not start crAPI or Juice Shop; ports `8080`, `18080`, `54334` must be free; orchestration is synchronous and holds the HTTP connection for `start`/`resume`.
+**Known limitations:** `e2e-local` does not start crAPI; `e2e-crapi` does not start httpbin. Fixed ports are intentional for reproducibility; resolve conflicts by stopping other listeners or overriding env vars documented above. Orchestration is synchronous and holds the HTTP connection for `start`/`resume`.
 
 ## Evidence normalization
 

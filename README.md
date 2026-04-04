@@ -60,7 +60,7 @@ curl -s -X POST localhost:8080/v1/specs/openapi/import --data-binary @spec.yaml 
 
 After a scan has imported endpoints and a `base_url`, you can run baseline and mutations in one synchronous orchestrated pass with `POST /v1/scans/{scan_id}/run` and body `{"action":"start"}` (details and resume/cancel in [docs/api.md](docs/api.md)).
 
-**Local validation:** with Docker available, `make e2e-local` runs an automated import, baseline, mutation, finding, and orchestration smoke against a local httpbin container (see [docs/testing.md](docs/testing.md)).
+**Local validation:** with Docker available, `make e2e-local` runs an automated import, baseline, mutation, finding, and orchestration smoke against a local httpbin container. `make e2e-crapi` runs the same class of checks against **[OWASP crAPI](https://github.com/OWASP/crAPI)** in Docker (clone under `.cache/crapi`). See [docs/testing.md](docs/testing.md).
 
 ## Documentation
 

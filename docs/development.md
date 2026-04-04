@@ -116,7 +116,13 @@ For a full V1 smoke against **local** httpbin + Postgres (no third-party targets
 make e2e-local
 ```
 
-Details, crAPI/Juice Shop notes, and teardown: [testing.md](testing.md#local-docker-end-to-end-v1).
+For the same checks against **local OWASP crAPI** (clone + upstream compose + Axiom):
+
+```text
+make e2e-crapi
+```
+
+Details and teardown: [testing.md](testing.md#local-docker-end-to-end-v1).
 
 **Credential storage:** scan `auth_headers` are stored in PostgreSQL as part of scan configuration so the API can replay authenticated baselines and mutations. `execution_records` persist **redacted** request and response header maps for known sensitive names (for example `Authorization`, `Cookie`, `X-Api-Key`); values are not stored in plaintext in those artifacts.
 

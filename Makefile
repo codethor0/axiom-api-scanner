@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint run-api migrate-up migrate-down test-integration e2e-local
+.PHONY: build test fmt lint run-api migrate-up migrate-down test-integration e2e-local e2e-crapi
 
 # CLI migrate must match github.com/golang-migrate/migrate/v4 used by internal/dbmigrate.
 MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
@@ -36,3 +36,8 @@ run-api: build
 # Docker-backed local V1 flow (Postgres + httpbin). Requires docker, curl, jq. See docs/testing.md.
 e2e-local:
 	./scripts/e2e_local.sh
+
+# OWASP crAPI in Docker + Axiom (heavy images; first run clones upstream repo). See docs/testing.md.
+e2e-crapi:
+	chmod +x ./scripts/e2e_crapi.sh
+	./scripts/e2e_crapi.sh

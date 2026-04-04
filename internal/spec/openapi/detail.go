@@ -31,6 +31,7 @@ func ExtractEndpointSpecs(ctx context.Context, data []byte) ([]engine.EndpointSp
 	if doc == nil {
 		return nil, fmt.Errorf("openapi document is nil")
 	}
+	stripSchemaExamples(doc)
 	if err := doc.Validate(ctx); err != nil {
 		return nil, fmt.Errorf("validate openapi: %w", err)
 	}

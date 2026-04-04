@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible local V1 validation: Postgres + httpbin + Axiom API (host binary).
-# Does not start OWASP crAPI or Juice Shop (use official projects on documented ports).
+# Does not start OWASP crAPI (use scripts/e2e_crapi.sh or Makefile e2e-crapi).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
