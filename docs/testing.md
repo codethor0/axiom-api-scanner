@@ -7,8 +7,8 @@
    - **No Docker:** `make ci-unit` from repo root (same spirit as CI’s compile/test gate; Postgres integration tests **skip** unless `AXIOM_TEST_DATABASE_URL` is set).
    - **Docker fixtures:** `make e2e-local` then, when that finishes, `make benchmark-findings-local` — or run **`make release-candidate-proof`** once to run both **in order** (avoids port **8080** fights).
 3. **Interpret green:** use the **Proof matrix** below — **GitHub Actions does not substitute** for local Docker; it complements it.
-4. **Optional read:** [benchmark-results.md](benchmark-results.md) for expected `bench_summary` rows; [faq.md](faq.md) for CI vs local and common pitfalls.
-5. **API container only (no httpbin e2e):** build with **`make docker-build-api`**, run with **`DATABASE_URL`** set (`make docker-run-api`), or one-shot **`make docker-api-smoke`** to assert **`GET /v1/rules`** against an ephemeral Postgres. For a **pre-published** GHCR tag (after CI publish), **`make docker-api-smoke-ghcr`** pulls and runs the same curl check **without** rebuilding. This is **packaging smoke**, not the **e2e-local** / **benchmark** proof matrix.
+4. **Optional read:** [benchmark-results.md](benchmark-results.md) for expected `bench_summary` rows; [faq.md](faq.md) for CI vs local, **GHCR platforms**, and common pitfalls.
+5. **API container only (no httpbin e2e):** build with **`make docker-build-api`**, run with **`DATABASE_URL`** set (`make docker-run-api`), or one-shot **`make docker-api-smoke`** to assert **`GET /v1/rules`** against an ephemeral Postgres. For a **pre-published** GHCR tag (after CI publish), **`make docker-api-smoke-ghcr`** pulls and runs the same curl check **without** rebuilding (expects **arm64** or **amd64** to exist in the manifest for your host). Quickest **no-clone** path: [README.md](../README.md#clean-machine-validation-ghcr). Packaging smoke is **not** the **e2e-local** / **benchmark** proof matrix.
 
 ## Docker API image (packaging)
 
@@ -35,6 +35,8 @@ Docker tags on **`ghcr.io/codethor0/axiom-api-scanner`**:
 | **`latest`** | Most recent successful publish from **`main`** |
 | **`sha-<short>`** | Same workflow run as **`latest`**, short Git SHA |
 | **`v0.1.0-rc.1`** (example) | Git **annotated/peeled** tag `v*` (use for release candidates and releases) |
+
+**Architectures:** each tag points to an **image index** with **`linux/amd64`** and **`linux/arm64`** (after multi-arch publishing is on **`main`**). **Clean-machine** smoke: [README.md](../README.md#clean-machine-validation-ghcr).
 
 Publish uses **`GITHUB_TOKEN`** with **`packages: write`** (no extra secrets). **Package visibility** may default to **private**; maintainers may set the package to **public** for anonymous **`docker pull`**.
 

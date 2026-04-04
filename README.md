@@ -12,6 +12,7 @@ Pick **one** path; do not assume CI already ran Docker for you.
 | --- | --- | --- |
 | Fast sanity (no Docker) | `make ci-unit` | Go; from repo root |
 | API from **GHCR** (no local build) | `docker pull ghcr.io/codethor0/axiom-api-scanner:latest` then [GHCR run](#quickstart-docker-from-ghcr) | Docker; **`DATABASE_URL`**; package must be **public** or you must `docker login ghcr.io` |
+| **Clean machine** smoke (pull, Postgres, **`GET /v1/rules`**) | [Clean machine validation](#clean-machine-validation-ghcr) | Docker + **curl** only (no clone required) |
 | API in **Docker** + Postgres you supply | `make docker-build-api` then `make docker-run-api` | Docker; **`DATABASE_URL`** (see [Quickstart (Docker)](#quickstart-docker) below) |
 | Prove image boots (`GET /v1/rules`) | `make docker-api-smoke` | Docker + **curl** (ephemeral Postgres + cleanup) |
 | Full scan lifecycle on **fixtures** | `make e2e-local` | Docker, `curl`, `jq`, free ports **54334**, **18080**, **8080** (defaults) |
@@ -75,6 +76,8 @@ Optional: **`AXIOM_HTTP_PUBLISH=3000:8080`** maps host port **3000** to the API.
 
 **Image repository:** `ghcr.io/codethor0/axiom-api-scanner`
 
+**Platforms:** published manifests include **`linux/amd64`** and **`linux/arm64`** (multi-arch index). Apple Silicon and most ARM Linux hosts can **`docker pull`** without **`--platform`**. Tags produced **before** multi-arch landed may be **amd64-only**; use **`docker pull --platform linux/amd64 ...`** until you pull a newer **`latest`**. See [docs/faq.md](docs/faq.md#what-cpu-architectures-does-the-ghcr-image-support).
+
 **Typical tags** (see [Tag scheme](docs/testing.md#ghcr-tag-scheme) in testing docs):
 
 | Tag | When it appears |
@@ -114,6 +117,32 @@ make docker-api-smoke-ghcr
 ```
 
 Use **`AXIOM_GHCR_IMAGE=...`** to pin a tag. If the package is not published or is private and you are not logged in, use **`make docker-api-smoke`** (build from source) or the **`curl`** flow above. Details: [docs/testing.md](docs/testing.md#docker-api-image-packaging).
+
+## Clean machine validation (GHCR)
+
+Shortest **external** check that the **published API image** runs (no git clone; assumes **Docker** and **curl**; **Postgres** via a throwaway container):
+
+1. **`docker pull ghcr.io/codethor0/axiom-api-scanner:latest`** (or a pinned **`v*`** / **`sha-*`** tag).
+2. **`docker network create axiom-clean`** (skip if it already exists; pick another name if needed).
+3. Start Postgres on that network (passwords are **example-only**):
+
+   ```text
+   docker run -d --name axiom-clean-pg --network axiom-clean \
+     -e POSTGRES_PASSWORD=axiom -e POSTGRES_USER=axiom -e POSTGRES_DB=axiom \
+     postgres:16-alpine
+   ```
+
+4. Run the API (wait a few seconds if Postgres just started):
+
+   ```text
+   docker run --rm --network axiom-clean -p 8080:8080 \
+     -e DATABASE_URL='postgres://axiom:axiom@axiom-clean-pg:5432/axiom?sslmode=disable' \
+     ghcr.io/codethor0/axiom-api-scanner:latest
+   ```
+
+5. In another terminal: **`curl -sf http://127.0.0.1:8080/v1/rules`** — expect **HTTP** **200** and JSON.
+
+**Contains:** **`cmd/api`** binary, **`/app/migrations`**, **`/app/rules`**. **Does not contain:** Postgres, scan fixtures, or the **e2e**/benchmark stacks. Remove containers/network when finished.
 
 ## Quickstart (API on your Postgres)
 

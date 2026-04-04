@@ -39,6 +39,12 @@ Yes for **this** repository: **`ghcr.io/codethor0/axiom-api-scanner`**. Images a
 
 If **`docker pull`** fails with **unauthorized** or **denied**, the package may still be **private**—sign in with **`docker login ghcr.io`** or ask a maintainer to make the package **public**. You can always build from the repo [`Dockerfile`](https://github.com/codethor0/axiom-api-scanner/blob/main/Dockerfile) via **`make docker-build-api`**. Pull/run flow: [README.md](../README.md#quickstart-docker-from-ghcr) and [testing.md](testing.md#ghcr-tag-scheme).
 
+## What CPU architectures does the GHCR image support?
+
+**Current policy:** the **container-publish** workflow builds a **multi-arch** image with **`linux/amd64`** and **`linux/arm64`** in one manifest list (QEMU in CI builds the non-native slice). **Apple Silicon** and **ARM64 Linux** hosts can **`docker pull`** the default tag and run **natively**.
+
+**Older tags** created when the image was **amd64-only** still exist in the registry history; if **`docker pull`** errors with **no matching manifest for linux/arm64**, pin **`--platform linux/amd64`** or move to a **`latest`** (or other tag) produced after multi-arch publishing landed on **`main`**.
+
 ## What is the difference between CI proof and local proof?
 
 | Layer | Runs in GitHub Actions? | What it shows |
