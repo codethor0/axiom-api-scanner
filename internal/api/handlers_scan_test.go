@@ -131,10 +131,59 @@ func (m *memRepositories) ReplaceScanEndpoints(_ context.Context, scanID string,
 	return nil
 }
 
-func (m *memRepositories) ListScanEndpoints(_ context.Context, scanID string) ([]engine.ScanEndpoint, error) {
+func (m *memRepositories) ListScanEndpoints(_ context.Context, scanID string, filter storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]engine.ScanEndpoint(nil), m.endpoints[scanID]...), nil
+	var out []engine.ScanEndpoint
+	for _, ep := range m.endpoints[scanID] {
+		if storage.ScanEndpointMatchesListFilter(ep, filter) {
+			out = append(out, ep)
+		}
+	}
+	return out, nil
+}
+
+func (m *memRepositories) ListEndpointInventory(_ context.Context, scanID string, filter storage.EndpointListFilter, opt storage.EndpointInventoryOptions) ([]storage.EndpointInventoryEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var eps []engine.ScanEndpoint
+	for _, ep := range m.endpoints[scanID] {
+		if storage.ScanEndpointMatchesListFilter(ep, filter) {
+			eps = append(eps, ep)
+		}
+	}
+	sort.SliceStable(eps, func(i, j int) bool {
+		if eps[i].PathTemplate != eps[j].PathTemplate {
+			return eps[i].PathTemplate < eps[j].PathTemplate
+		}
+		return strings.TrimSpace(eps[i].Method) < strings.TrimSpace(eps[j].Method)
+	})
+	out := make([]storage.EndpointInventoryEntry, len(eps))
+	for i, ep := range eps {
+		ent := storage.EndpointInventoryEntry{Endpoint: ep}
+		if opt.IncludeSummary {
+			var sum storage.EndpointInventorySummary
+			for _, rec := range m.execRecords {
+				if rec.ScanID != scanID || rec.ScanEndpointID != ep.ID {
+					continue
+				}
+				switch rec.Phase {
+				case engine.PhaseBaseline:
+					sum.BaselineExecutionsRecorded++
+				case engine.PhaseMutated:
+					sum.MutationExecutionsRecorded++
+				}
+			}
+			for _, f := range m.byScan[scanID] {
+				if f.ScanEndpointID == ep.ID {
+					sum.FindingsRecorded++
+				}
+			}
+			ent.Summary = sum
+		}
+		out[i] = ent
+	}
+	return out, nil
 }
 
 func (m *memRepositories) InsertExecutionRecord(_ context.Context, rec engine.ExecutionRecord) (string, error) {

@@ -162,7 +162,7 @@ func TestListExecutionRunTallies_mem_matchesFullListProjection(t *testing.T) {
 	if rerr := mem.ReplaceScanEndpoints(ctx, id, []engine.EndpointSpec{{Method: "GET", Path: "/x"}}); rerr != nil {
 		t.Fatal(rerr)
 	}
-	eps, err := mem.ListScanEndpoints(ctx, id)
+	eps, err := mem.ListScanEndpoints(ctx, id, storage.EndpointListFilter{})
 	if err != nil || len(eps) != 1 {
 		t.Fatal(eps, err)
 	}

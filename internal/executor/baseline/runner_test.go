@@ -41,10 +41,16 @@ func (m *memRun) GetScan(_ context.Context, id string) (engine.Scan, error) {
 	return s, nil
 }
 
-func (m *memRun) ListScanEndpoints(_ context.Context, scanID string) ([]engine.ScanEndpoint, error) {
+func (m *memRun) ListScanEndpoints(_ context.Context, scanID string, filter storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]engine.ScanEndpoint(nil), m.endpoints[scanID]...), nil
+	var out []engine.ScanEndpoint
+	for _, ep := range m.endpoints[scanID] {
+		if storage.ScanEndpointMatchesListFilter(ep, filter) {
+			out = append(out, ep)
+		}
+	}
+	return out, nil
 }
 
 func (m *memRun) InsertExecutionRecord(_ context.Context, rec engine.ExecutionRecord) (string, error) {

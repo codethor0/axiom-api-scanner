@@ -86,11 +86,22 @@ func (s *stubResumeStore) PatchScanTarget(context.Context, string, storage.Patch
 func (s *stubResumeStore) ReplaceScanEndpoints(context.Context, string, []engine.EndpointSpec) error {
 	panic("ReplaceScanEndpoints")
 }
-func (s *stubResumeStore) ListScanEndpoints(_ context.Context, scanID string) ([]engine.ScanEndpoint, error) {
+func (s *stubResumeStore) ListScanEndpoints(_ context.Context, scanID string, _ storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
 	if s.scan.ID != scanID {
 		return nil, storage.ErrNotFound
 	}
 	return s.endpoints, nil
+}
+func (s *stubResumeStore) ListEndpointInventory(ctx context.Context, scanID string, filter storage.EndpointListFilter, _ storage.EndpointInventoryOptions) ([]storage.EndpointInventoryEntry, error) {
+	eps, err := s.ListScanEndpoints(ctx, scanID, filter)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]storage.EndpointInventoryEntry, len(eps))
+	for i, ep := range eps {
+		out[i] = storage.EndpointInventoryEntry{Endpoint: ep}
+	}
+	return out, nil
 }
 func (s *stubResumeStore) UpdateBaselineState(_ context.Context, scanID string, st storage.BaselineState) error {
 	if s.scan.ID != scanID {

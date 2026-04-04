@@ -35,8 +35,11 @@ func (o *onlyGetScanStore) PatchScanTarget(context.Context, string, storage.Patc
 func (o *onlyGetScanStore) ReplaceScanEndpoints(context.Context, string, []engine.EndpointSpec) error {
 	panic("ReplaceScanEndpoints")
 }
-func (o *onlyGetScanStore) ListScanEndpoints(context.Context, string) ([]engine.ScanEndpoint, error) {
+func (o *onlyGetScanStore) ListScanEndpoints(context.Context, string, storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
 	panic("ListScanEndpoints")
+}
+func (o *onlyGetScanStore) ListEndpointInventory(context.Context, string, storage.EndpointListFilter, storage.EndpointInventoryOptions) ([]storage.EndpointInventoryEntry, error) {
+	panic("ListEndpointInventory")
 }
 
 func TestService_Run_nilReceiver(t *testing.T) {

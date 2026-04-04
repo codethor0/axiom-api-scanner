@@ -6,7 +6,7 @@ This document describes the intended shape of Axiom at V1. The repository includ
 
 ### Control plane (`cmd/api`, `internal/api`)
 
-The HTTP API creates and updates scans, imports OpenAPI specs per scan, lists imported endpoints, triggers baseline and mutation execution (ad hoc or via **scan run** orchestration), lists execution records, transitions scan state, lists findings, serves finding-tied evidence rows, and exposes rules. Baseline and mutation runs execute in-process today; the worker binary remains a stub for future asynchronous work.
+The HTTP API creates and updates scans, imports OpenAPI specs per scan, lists imported endpoints (inventory **read** envelope with optional per-endpoint execution/finding **counts** from SQL aggregates), triggers baseline and mutation execution (ad hoc or via **scan run** orchestration), lists execution records, transitions scan state, lists findings, serves finding-tied evidence rows, and exposes rules. Baseline and mutation runs execute in-process today; the worker binary remains a stub for future asynchronous work.
 
 ### Scan run orchestrator (`internal/orchestrator`)
 
@@ -60,7 +60,7 @@ URL join and scope checks, response body normalization consistent with baseline 
 
 ### Storage (`internal/storage`, `internal/storage/postgres`, `migrations/`)
 
-Repositories cover scans (target, auth, `run_phase`, `run_error`, baseline and mutation progress, `findings_count`), endpoint replace or list, execution insert, list, get-by-scan, mutation lookup by `(scan, endpoint, rule, candidate_key)`, findings list, get, get-by-evidence-tuple, and create (with evidence artifact and `findings_count` bump). Unique constraints prevent duplicate findings for the same evidence tuple. SQL migrations via **golang-migrate** (see [development.md](development.md)).
+Repositories cover scans (target, auth, `run_phase`, `run_error`, baseline and mutation progress, `findings_count`), endpoint replace, filtered list, and **list with inventory** (optional joins to count baseline/mutated `execution_records` and `findings` per `scan_endpoint_id`), execution insert, list, get-by-scan, mutation lookup by `(scan, endpoint, rule, candidate_key)`, findings list, get, get-by-evidence-tuple, and create (with evidence artifact and `findings_count` bump). Unique constraints prevent duplicate findings for the same evidence tuple. SQL migrations via **golang-migrate** (see [development.md](development.md)).
 
 ## Current execution flow (implemented)
 
@@ -76,7 +76,7 @@ Repositories cover scans (target, auth, `run_phase`, `run_error`, baseline and m
 
 - **Cursor pagination** does not guarantee a stable total row count across pages if rows are inserted while the client pages; each page is still ordered deterministically for the applied filters. **`offset`** query is intentionally unsupported (`400`). Clients must use `next_cursor` as issued with the same `sort`, `order`, and filters.
 - Orchestration is in-process and blocking for the HTTP request that calls `start`/`resume`; there is no job queue or worker handoff yet. `GET .../run/status` is read-only; it uses aggregate and tally queries for findings and executions (not full row loads for those summaries) and still loads imported `scan_endpoints` for planner-style diagnostics. It does not broaden write surface or start work.
-- **Remaining read-path cost:** `/run/status` still loads **all** imported endpoints into memory for the response (count + coverage/diagnostics). Very large OpenAPI imports can make that handler heavier than the findings/execution aggregate slice alone; list endpoints remain the supported path for browsing many findings or executions (keyset pagination).
+- **Remaining read-path cost:** `/run/status` still loads **all** imported endpoints into memory for the response (count + coverage/diagnostics). Very large OpenAPI imports can make that handler heavier than the findings/execution aggregate slice alone; list endpoints remain the supported path for browsing many findings or executions (keyset pagination). **`GET .../endpoints`** returns the full filtered inventory in one response (no keyset pagination); use `method`, `declares_security`, and `include_summary=false` to narrow or lighten the payload.
 - **Read-model consistency** is observability-only: for example `findings_count` on `scans` vs `len(findings)` for the scan, baseline/mutation done-vs-total on the scan row, and rule-family mutated counts vs mutated execution row counts. Drift indicates a bug or partial write; operators see stable codes under `diagnostics.consistency_detail`.
 - **Declared-secure / protected-route visibility** uses only `security_scheme_hints` on imported rows plus `execution_records` joined by `scan_endpoint_id`. It does not prove OAuth flows, token lifetimes, or correct authorization decisions—only stored traffic and status codes against operations the spec marked as secured.
 - No worker offload, no parallel mutation flood, no arbitrary fuzzing.

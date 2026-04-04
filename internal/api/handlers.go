@@ -263,15 +263,21 @@ func (h *Handler) listScanEndpoints(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
 		return
 	}
-	list, err := h.Endpoints.ListScanEndpoints(r.Context(), id)
+	listFilter, reqErr := parseEndpointListParams(r)
+	if reqErr != nil {
+		writeAPIError(w, http.StatusBadRequest, reqErr.code, reqErr.message)
+		return
+	}
+	entries, err := h.Endpoints.ListEndpointInventory(r.Context(), id, listFilter.storageFilter, storage.EndpointInventoryOptions{IncludeSummary: listFilter.includeSummary})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
 		return
 	}
-	if list == nil {
-		list = []engine.ScanEndpoint{}
+	out := EndpointListResponse{Items: make([]EndpointRead, 0, len(entries))}
+	for _, ent := range entries {
+		out.Items = append(out.Items, endpointReadFromInventory(ent, listFilter.includeSummary))
 	}
-	writeJSON(w, http.StatusOK, list)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) runBaseline(w http.ResponseWriter, r *http.Request) {
@@ -300,7 +306,7 @@ func (h *Handler) runBaseline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ruleSet, _ := h.loadRules()
-	endpoints, _ := h.Endpoints.ListScanEndpoints(r.Context(), id)
+	endpoints, _ := h.Endpoints.ListScanEndpoints(r.Context(), id, storage.EndpointListFilter{})
 	resp := BaselineRunAPIResponse{
 		Result:             res,
 		PlanByEndpoint:     buildPlanSummaries(endpoints, ruleSet),
@@ -332,7 +338,7 @@ func (h *Handler) runMutations(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "rule_load_failed", err.Error())
 		return
 	}
-	endpoints, err := h.Endpoints.ListScanEndpoints(r.Context(), id)
+	endpoints, err := h.Endpoints.ListScanEndpoints(r.Context(), id, storage.EndpointListFilter{})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
 		return

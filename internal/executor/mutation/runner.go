@@ -22,7 +22,7 @@ import (
 // Store is persistence and findings for mutation runs.
 type Store interface {
 	GetScan(ctx context.Context, id string) (engine.Scan, error)
-	ListScanEndpoints(ctx context.Context, scanID string) ([]engine.ScanEndpoint, error)
+	ListScanEndpoints(ctx context.Context, scanID string, filter storage.EndpointListFilter) ([]engine.ScanEndpoint, error)
 	GetLatestExecution(ctx context.Context, scanID, scanEndpointID string, phase engine.ExecutionPhase) (engine.ExecutionRecord, error)
 	GetMutationByCandidate(ctx context.Context, scanID, scanEndpointID, ruleID, candidateKey string) (engine.ExecutionRecord, error)
 	InsertExecutionRecord(ctx context.Context, rec engine.ExecutionRecord) (string, error)

@@ -37,7 +37,7 @@ func (m *memMutationStore) GetScan(_ context.Context, id string) (engine.Scan, e
 	return m.scan, nil
 }
 
-func (m *memMutationStore) ListScanEndpoints(_ context.Context, scanID string) ([]engine.ScanEndpoint, error) {
+func (m *memMutationStore) ListScanEndpoints(_ context.Context, scanID string, _ storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.scan.ID != scanID {

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
@@ -22,6 +24,34 @@ type PatchScanRequest struct {
 	BaseURL            *string           `json:"base_url,omitempty"`
 	AuthHeaders        map[string]string `json:"auth_headers,omitempty"`
 	ReplaceAuthHeaders bool              `json:"replace_auth_headers"`
+}
+
+// EndpointInventorySummaryRead counts persisted baseline/mutated execution_rows and findings rows for one scan_endpoint id.
+type EndpointInventorySummaryRead struct {
+	BaselineExecutionsRecorded int `json:"baseline_executions_recorded"`
+	MutationExecutionsRecorded int `json:"mutation_executions_recorded"`
+	FindingsRecorded           int `json:"findings_recorded"`
+}
+
+// EndpointRead is one imported OpenAPI operation plus optional inventory summaries (GET .../endpoints).
+type EndpointRead struct {
+	ID                      string    `json:"id"`
+	ScanID                  string    `json:"scan_id"`
+	Method                  string    `json:"method"`
+	PathTemplate            string    `json:"path_template"`
+	OperationID             string    `json:"operation_id,omitempty"`
+	SecuritySchemeHints     []string  `json:"security_scheme_hints,omitempty"`
+	RequestContentTypes     []string  `json:"request_content_types,omitempty"`
+	ResponseContentTypes    []string  `json:"response_content_types,omitempty"`
+	RequestBodyJSON         bool      `json:"request_body_json"`
+	CreatedAt               time.Time `json:"created_at"`
+	DeclaresOpenAPISecurity bool      `json:"declares_openapi_security"`
+	Summary                 *EndpointInventorySummaryRead `json:"summary,omitempty"`
+}
+
+// EndpointListResponse is the wire envelope for GET /v1/scans/{scanID}/endpoints.
+type EndpointListResponse struct {
+	Items []EndpointRead `json:"items"`
 }
 
 // ScanControlRequest transitions scan lifecycle state.

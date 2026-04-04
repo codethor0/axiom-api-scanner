@@ -137,7 +137,7 @@ func TestEndpointReplace_integration(t *testing.T) {
 	if err = s.ReplaceScanEndpoints(ctx, scan.ID, first); err != nil {
 		t.Fatal(err)
 	}
-	list1, err := s.ListScanEndpoints(ctx, scan.ID)
+	list1, err := s.ListScanEndpoints(ctx, scan.ID, storage.EndpointListFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestEndpointReplace_integration(t *testing.T) {
 	if err = s.ReplaceScanEndpoints(ctx, scan.ID, second); err != nil {
 		t.Fatal(err)
 	}
-	list2, err := s.ListScanEndpoints(ctx, scan.ID)
+	list2, err := s.ListScanEndpoints(ctx, scan.ID, storage.EndpointListFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestFindingWrite_integration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	eps, err := s.ListScanEndpoints(ctx, scan.ID)
+	eps, err := s.ListScanEndpoints(ctx, scan.ID, storage.EndpointListFilter{})
 	if err != nil || len(eps) != 1 {
 		t.Fatal(eps, err)
 	}
@@ -353,5 +353,19 @@ func TestFindingWrite_integration(t *testing.T) {
 			tallies[i].ResponseStatus != list[i].ResponseStatus || tallies[i].RuleID != list[i].RuleID {
 			t.Fatalf("i=%d tally=%+v full=%+v", i, tallies[i], list[i])
 		}
+	}
+
+	inv, err := s.ListEndpointInventory(ctx, scan.ID, storage.EndpointListFilter{}, storage.EndpointInventoryOptions{IncludeSummary: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inv) != 1 {
+		t.Fatalf("ListEndpointInventory len %d", len(inv))
+	}
+	if inv[0].Endpoint.ID != ep.ID {
+		t.Fatalf("endpoint id mismatch %s vs %s", inv[0].Endpoint.ID, ep.ID)
+	}
+	if inv[0].Summary.BaselineExecutionsRecorded != 1 || inv[0].Summary.MutationExecutionsRecorded != 1 || inv[0].Summary.FindingsRecorded != 1 {
+		t.Fatalf("ListEndpointInventory summary %+v", inv[0].Summary)
 	}
 }

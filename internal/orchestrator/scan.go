@@ -148,7 +148,7 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 	if err != nil {
 		return fail(err.Error())
 	}
-	endpoints, err := s.Store.ListScanEndpoints(ctx, scanID)
+	endpoints, err := s.Store.ListScanEndpoints(ctx, scanID, storage.EndpointListFilter{})
 	if err != nil {
 		return fail(err.Error())
 	}

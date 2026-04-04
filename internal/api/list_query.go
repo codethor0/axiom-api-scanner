@@ -8,6 +8,42 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
+type parsedEndpointListParams struct {
+	storageFilter    storage.EndpointListFilter
+	includeSummary bool
+}
+
+func parseEndpointListParams(r *http.Request) (parsedEndpointListParams, *apiRequestError) {
+	var out parsedEndpointListParams
+	out.includeSummary = true
+	if v := strings.TrimSpace(r.URL.Query().Get("include_summary")); v != "" {
+		switch strings.ToLower(v) {
+		case "true", "1", "yes":
+			out.includeSummary = true
+		case "false", "0", "no":
+			out.includeSummary = false
+		default:
+			return parsedEndpointListParams{}, &apiRequestError{code: "invalid_query", message: "include_summary must be true or false"}
+		}
+	}
+	if v := strings.TrimSpace(r.URL.Query().Get("method")); v != "" {
+		out.storageFilter.Method = v
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("declares_security")); raw != "" {
+		switch strings.ToLower(raw) {
+		case "true":
+			t := true
+			out.storageFilter.DeclaresSecurity = &t
+		case "false":
+			f := false
+			out.storageFilter.DeclaresSecurity = &f
+		default:
+			return parsedEndpointListParams{}, &apiRequestError{code: "invalid_query", message: "declares_security must be true or false"}
+		}
+	}
+	return out, nil
+}
+
 func parseExecutionListPageParams(r *http.Request) (storage.ExecutionListPageOptions, *apiRequestError) {
 	q := r.URL.Query()
 	if _, ok := q["offset"]; ok {

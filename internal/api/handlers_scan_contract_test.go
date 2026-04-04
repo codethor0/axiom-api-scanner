@@ -240,7 +240,7 @@ func TestScanRunStatus_wireShape_publicOnlyRun(t *testing.T) {
 	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{{Method: "GET", Path: "/api/public"}}); rerr != nil {
 		t.Fatal(rerr)
 	}
-	eps, lerr := mem.ListScanEndpoints(ctx, scan.ID)
+	eps, lerr := mem.ListScanEndpoints(ctx, scan.ID, storage.EndpointListFilter{})
 	if lerr != nil || len(eps) != 1 {
 		t.Fatal(lerr, len(eps))
 	}

@@ -111,7 +111,10 @@ type ExecutionRepository interface {
 // EndpointRepository imports and lists persisted OpenAPI endpoints for a scan.
 type EndpointRepository interface {
 	ReplaceScanEndpoints(ctx context.Context, scanID string, specs []engine.EndpointSpec) error
-	ListScanEndpoints(ctx context.Context, scanID string) ([]engine.ScanEndpoint, error)
+	// ListScanEndpoints returns imported rows in deterministic order (path_template, method) with optional narrow filters.
+	ListScanEndpoints(ctx context.Context, scanID string, filter EndpointListFilter) ([]engine.ScanEndpoint, error)
+	// ListEndpointInventory returns the same ordering/filters as ListScanEndpoints plus optional per-endpoint persisted counts.
+	ListEndpointInventory(ctx context.Context, scanID string, filter EndpointListFilter, opt EndpointInventoryOptions) ([]EndpointInventoryEntry, error)
 }
 
 // CreateEvidenceInput is stored with a finding.

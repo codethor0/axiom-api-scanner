@@ -19,7 +19,7 @@ import (
 // Store is the persistence surface required for baseline runs.
 type Store interface {
 	GetScan(ctx context.Context, id string) (engine.Scan, error)
-	ListScanEndpoints(ctx context.Context, scanID string) ([]engine.ScanEndpoint, error)
+	ListScanEndpoints(ctx context.Context, scanID string, filter storage.EndpointListFilter) ([]engine.ScanEndpoint, error)
 	InsertExecutionRecord(ctx context.Context, rec engine.ExecutionRecord) (string, error)
 	UpdateBaselineState(ctx context.Context, scanID string, st storage.BaselineState) error
 }
@@ -107,7 +107,7 @@ func (r *Runner) RunWithOptions(ctx context.Context, scanID string, opts RunOpti
 		return out, fmt.Errorf("invalid_base_url: %w", err)
 	}
 
-	endpoints, err := r.Store.ListScanEndpoints(ctx, scanID)
+	endpoints, err := r.Store.ListScanEndpoints(ctx, scanID, storage.EndpointListFilter{})
 	if err != nil {
 		return Result{}, err
 	}

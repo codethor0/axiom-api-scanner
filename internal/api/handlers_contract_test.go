@@ -14,6 +14,7 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
 	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
+	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
 func testHandlerWithExecutors(mem *memRepositories) *Handler {
@@ -295,7 +296,7 @@ paths:
 		t.Fatal(resp1.StatusCode)
 	}
 
-	list1, err := h.Endpoints.ListScanEndpoints(context.Background(), scan.ID)
+	list1, err := h.Endpoints.ListScanEndpoints(context.Background(), scan.ID, storage.EndpointListFilter{})
 	if err != nil || len(list1) != 1 || list1[0].PathTemplate != "/a" {
 		t.Fatal(list1, err)
 	}
@@ -320,7 +321,7 @@ paths:
 		t.Fatal(resp2.StatusCode)
 	}
 
-	list2, err := h.Endpoints.ListScanEndpoints(context.Background(), scan.ID)
+	list2, err := h.Endpoints.ListScanEndpoints(context.Background(), scan.ID, storage.EndpointListFilter{})
 	if err != nil || len(list2) != 1 || list2[0].PathTemplate != "/b" {
 		t.Fatal(list2, err)
 	}

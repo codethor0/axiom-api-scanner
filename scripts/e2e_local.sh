@@ -92,7 +92,7 @@ curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/specs/openapi" \
   --data-binary @"$ROOT/testdata/e2e/httpbin-openapi.yaml" | jq -e '.count >= 1' >/dev/null
 
 ENDPOINTS="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/endpoints")"
-echo "    endpoints: $(echo "$ENDPOINTS" | jq 'length')"
+echo "    endpoints: $(echo "$ENDPOINTS" | jq '.items | length')"
 
 echo "==> E2E: baseline"
 BASELINE_JSON="$(curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/baseline")"

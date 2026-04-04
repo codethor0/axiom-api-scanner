@@ -132,7 +132,30 @@ Body: raw OpenAPI 3.x YAML or JSON (same limits as global validate). Persists en
 
 ### GET /v1/scans/{scanID}/endpoints
 
-Returns persisted `ScanEndpoint` rows (JSON array), ordered by `path_template` then `method`.
+Returns **`200`** with a JSON object: **`items`** (array of **endpoint read** objects), same stable envelope pattern as execution/finding lists.
+
+**Endpoint read** fields:
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `scan_id` | Stable UUID for the imported row; scan scope. |
+| `method`, `path_template`, `operation_id` | From OpenAPI import (`operation_id` omitted when empty). |
+| `security_scheme_hints` | Names of OpenAPI security schemes attached at import (may be empty). |
+| `declares_openapi_security` | `true` iff `security_scheme_hints` is non-empty on the persisted row (derived read-only flag for filtering/sorting mentally). |
+| `request_content_types`, `response_content_types`, `request_body_json`, `created_at` | As stored on `scan_endpoints`. |
+| `summary` | Present unless `include_summary=false`. Counts are **only** persisted fact: numbers of `execution_records` with `phase=baseline` / `phase=mutated` and of `findings` rows with this `scan_endpoint_id`. Not “attempted” beyond stored rows; skipped baseline work leaves no execution row. |
+
+**Query parameters (read-only, optional):**
+
+| Parameter | Meaning |
+| --- | --- |
+| `method` | Case-insensitive match on stored HTTP method (e.g. `GET`). |
+| `declares_security` | `true` or `false`: filter by non-empty vs empty `security_scheme_hints`. |
+| `include_summary` | `true` (default) or `false`: omit `summary` objects and skip aggregate joins for a lighter inventory read. |
+
+Invalid `include_summary` or `declares_security` values return **`400`** `invalid_query`.
+
+Ordering is deterministic: `path_template` ascending, then `method` ascending (unchanged from storage).
 
 ### POST /v1/scans/{scanID}/executions/baseline
 
