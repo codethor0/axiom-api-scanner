@@ -8,19 +8,37 @@
    - **Docker fixtures:** `make e2e-local` then, when that finishes, `make benchmark-findings-local` — or run **`make release-candidate-proof`** once to run both **in order** (avoids port **8080** fights).
 3. **Interpret green:** use the **Proof matrix** below — **GitHub Actions does not substitute** for local Docker; it complements it.
 4. **Optional read:** [benchmark-results.md](benchmark-results.md) for expected `bench_summary` rows; [faq.md](faq.md) for CI vs local and common pitfalls.
-5. **API container only (no httpbin e2e):** build with **`make docker-build-api`**, run with **`DATABASE_URL`** set (`make docker-run-api`), or one-shot **`make docker-api-smoke`** to assert **`GET /v1/rules`** against an ephemeral Postgres. This is **packaging smoke**, not the **e2e-local** / **benchmark** proof matrix.
+5. **API container only (no httpbin e2e):** build with **`make docker-build-api`**, run with **`DATABASE_URL`** set (`make docker-run-api`), or one-shot **`make docker-api-smoke`** to assert **`GET /v1/rules`** against an ephemeral Postgres. For a **pre-published** GHCR tag (after CI publish), **`make docker-api-smoke-ghcr`** pulls and runs the same curl check **without** rebuilding. This is **packaging smoke**, not the **e2e-local** / **benchmark** proof matrix.
 
 ## Docker API image (packaging)
 
-The repo [`Dockerfile`](../Dockerfile) builds **`cmd/api`** only. The image includes **`/app/migrations`** and **`/app/rules`**; it does **not** contain Postgres or fixture targets. Typical use:
+The repo [`Dockerfile`](../Dockerfile) builds **`cmd/api`** only. The image includes **`/app/migrations`** and **`/app/rules`**; it does **not** contain Postgres, httpbin, or benchmark fixtures. Typical use:
 
 | Step | Command / note |
 | --- | --- |
-| Build | `make docker-build-api` (override tag: `AXIOM_IMAGE=ghcr.io/org/axiom:v0.1.0-rc.1 docker build ...` or set **`AXIOM_IMAGE`**) |
-| Run | `export DATABASE_URL=postgres://...` then `make docker-run-api`, or use `docker run` as in [README.md](../README.md#quickstart-docker) |
-| Smoke test | `make docker-api-smoke` — builds, starts **postgres:16-alpine** on a throwaway network, curls **`/v1/rules`**, removes containers |
+| Build locally | `make docker-build-api` (set **`AXIOM_IMAGE`** for a registry-style name if you like) |
+| Pull from GHCR | `make docker-pull-ghcr` ( **`AXIOM_GHCR_IMAGE`** defaults to **`ghcr.io/codethor0/axiom-api-scanner:latest`**) |
+| Run | `export DATABASE_URL=postgres://...` then `make docker-run-api` or `make docker-run-ghcr`; see [README.md](../README.md#quickstart-docker) / [GHCR](../README.md#quickstart-docker-from-ghcr) |
+| Smoke (build) | `make docker-api-smoke` — `docker build`, ephemeral Postgres, **`GET /v1/rules`** |
+| Smoke (pull) | `make docker-api-smoke-ghcr` — `docker pull` then smoke with **`AXIOM_DOCKER_SMOKE_SKIP_BUILD=1`** (fails if the tag is missing or private without login) |
 
-**CI:** workflow runs **`bash -n`** on [`scripts/docker_api_smoke.sh`](../scripts/docker_api_smoke.sh) only; it does **not** build or push the image. **Publishing to GHCR/Docker Hub** is an org-specific step (credentials, tag policy).
+[`scripts/docker_api_smoke.sh`](../scripts/docker_api_smoke.sh): set **`AXIOM_DOCKER_SMOKE_SKIP_BUILD=1`** to skip **`docker build`** and use a local image tag (e.g. after **`docker pull`**).
+
+## GHCR tag scheme
+
+Workflow: [`.github/workflows/container-publish.yml`](../.github/workflows/container-publish.yml). Triggers: **`push` to `main`**, **`push` of git tags `v*`**, **`workflow_dispatch`**. **Not** triggered by **`pull_request`**. Job is gated to **`github.repository == 'codethor0/axiom-api-scanner'`** so random forks do not push into the canonical GHCR package on their own **`push`** (they would need to change or remove that guard).
+
+Docker tags on **`ghcr.io/codethor0/axiom-api-scanner`**:
+
+| Docker tag | Meaning |
+| --- | --- |
+| **`latest`** | Most recent successful publish from **`main`** |
+| **`sha-<short>`** | Same workflow run as **`latest`**, short Git SHA |
+| **`v0.1.0-rc.1`** (example) | Git **annotated/peeled** tag `v*` (use for release candidates and releases) |
+
+Publish uses **`GITHUB_TOKEN`** with **`packages: write`** (no extra secrets). **Package visibility** may default to **private**; maintainers may set the package to **public** for anonymous **`docker pull`**.
+
+**CI** ([`ci.yml`](../.github/workflows/ci.yml)): still runs **`bash -n`** on **`docker_api_smoke.sh`** only; it does **not** invoke **`container-publish.yml`**.
 
 ## Release candidate proof
 

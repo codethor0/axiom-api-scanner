@@ -19,7 +19,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker build -t "$IMAGE" -f Dockerfile .
+if [ "${AXIOM_DOCKER_SMOKE_SKIP_BUILD:-0}" != "1" ]; then
+  docker build -t "$IMAGE" -f Dockerfile .
+else
+  echo "docker_api_smoke: skip build (AXIOM_DOCKER_SMOKE_SKIP_BUILD=1), using image $IMAGE"
+  docker image inspect "$IMAGE" >/dev/null 2>&1 || {
+    echo "docker_api_smoke: image not found locally: $IMAGE (pull it first)" >&2
+    exit 1
+  }
+fi
+
 docker network create "$NET"
 docker run -d --name "$PG" --network "$NET" \
   -e POSTGRES_PASSWORD=axiom \

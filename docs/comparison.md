@@ -32,7 +32,7 @@ Other tools **often** emphasize broader **API definition** imports, **larger** a
 
 Axiom **does not** claim parity with those scopes. It targets the **narrow wedge** above with **explicit safety modes**, **stored evidence**, and **stable HTTP read models**.
 
-**Packaging:** the repository includes a **`Dockerfile`** for the control-plane API and documented **`make docker-*`** targets; you build or publish images in **your** environment—see [README.md](../README.md#quickstart-docker).
+**Packaging:** the control-plane API ships as a **`Dockerfile`**, **`make docker-*`** targets, and **GHCR** publishes from [`.github/workflows/container-publish.yml`](https://github.com/codethor0/axiom-api-scanner/blob/main/.github/workflows/container-publish.yml) (`ghcr.io/codethor0/axiom-api-scanner`)—see [README.md](../README.md#quickstart-docker-from-ghcr).
 
 ## What Axiom does not do yet (honest gap)
 

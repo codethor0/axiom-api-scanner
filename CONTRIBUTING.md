@@ -42,7 +42,7 @@ API **image** smoke (`docker build` + ephemeral Postgres + `GET /v1/rules`):
 make docker-api-smoke
 ```
 
-Full **release-candidate** recipe: `make release-candidate-proof` (see [docs/testing.md](docs/testing.md)). Expected **benchmark** rows per V1 family: [docs/benchmark-results.md](docs/benchmark-results.md). Touching **`Dockerfile`** or **`scripts/docker_api_smoke.sh`**: run **`make docker-api-smoke`** before opening a PR when possible.
+Full **release-candidate** recipe: `make release-candidate-proof` (see [docs/testing.md](docs/testing.md)). Expected **benchmark** rows per V1 family: [docs/benchmark-results.md](docs/benchmark-results.md). Touching **`Dockerfile`**, **`scripts/docker_api_smoke.sh`**, or **`.github/workflows/container-publish.yml`**: run **`make docker-api-smoke`** before opening a PR when possible; optionally **`make docker-api-smoke-ghcr`** if a published tag exists and you have pull access.
 
 ## Reporting issues
 

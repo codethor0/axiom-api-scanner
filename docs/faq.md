@@ -35,7 +35,9 @@ Four builtin-oriented **families** (see [benchmark-results.md](benchmark-results
 
 ## Is there an official Docker / GHCR image?
 
-The repo includes a **`Dockerfile`** and **`make docker-build-api`** so you can build the API image locally or in **your** registry (for example GHCR or Docker Hub under **your** org). There is no **mandatory** public image maintained by the project for **`v0.1.0-rc.1`**; some teams prefer to build from the tagged source. See [README.md](../README.md#quickstart-docker) and [testing.md](testing.md#docker-api-image-packaging).
+Yes for **this** repository: **`ghcr.io/codethor0/axiom-api-scanner`**. Images are built by [`.github/workflows/container-publish.yml`](https://github.com/codethor0/axiom-api-scanner/blob/main/.github/workflows/container-publish.yml) on **`push` to `main`**, on **git tags `v*`** (e.g. **`v0.1.0-rc.1`**), and **workflow_dispatch**. Tags include **`latest`** and **`sha-<short>`** from **`main`**, plus the **git tag** name for **`v*`** pushes.
+
+If **`docker pull`** fails with **unauthorized** or **denied**, the package may still be **private**—sign in with **`docker login ghcr.io`** or ask a maintainer to make the package **public**. You can always build from the repo [`Dockerfile`](https://github.com/codethor0/axiom-api-scanner/blob/main/Dockerfile) via **`make docker-build-api`**. Pull/run flow: [README.md](../README.md#quickstart-docker-from-ghcr) and [testing.md](testing.md#ghcr-tag-scheme).
 
 ## What is the difference between CI proof and local proof?
 

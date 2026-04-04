@@ -11,6 +11,7 @@ Pick **one** path; do not assume CI already ran Docker for you.
 | Goal | Command | You need |
 | --- | --- | --- |
 | Fast sanity (no Docker) | `make ci-unit` | Go; from repo root |
+| API from **GHCR** (no local build) | `docker pull ghcr.io/codethor0/axiom-api-scanner:latest` then [GHCR run](#quickstart-docker-from-ghcr) | Docker; **`DATABASE_URL`**; package must be **public** or you must `docker login ghcr.io` |
 | API in **Docker** + Postgres you supply | `make docker-build-api` then `make docker-run-api` | Docker; **`DATABASE_URL`** (see [Quickstart (Docker)](#quickstart-docker) below) |
 | Prove image boots (`GET /v1/rules`) | `make docker-api-smoke` | Docker + **curl** (ephemeral Postgres + cleanup) |
 | Full scan lifecycle on **fixtures** | `make e2e-local` | Docker, `curl`, `jq`, free ports **54334**, **18080**, **8080** (defaults) |
@@ -19,7 +20,7 @@ Pick **one** path; do not assume CI already ran Docker for you.
 
 **Read next:** what green means in each layer — [docs/testing.md](docs/testing.md#evaluator-quick-path-first-10-minutes) and the **Proof matrix**. **Demo outline:** [docs/demo-script.md](docs/demo-script.md).
 
-**Registry images:** this repository ships a **`Dockerfile`** for the API; build locally or in your registry (for example GHCR). There is **no** required public image for evaluating the RC—you can build from source as below.
+**Distribution:** prebuilt **API** images are published to **GHCR** when [`.github/workflows/container-publish.yml`](.github/workflows/container-publish.yml) runs (push to **`main`**, **`v*`** tags, or manual **workflow_dispatch**). See [Quickstart (Docker from GHCR)](#quickstart-docker-from-ghcr). You can still build from the [`Dockerfile`](Dockerfile) if you prefer.
 
 ## What Axiom is
 
@@ -69,6 +70,50 @@ make docker-run-api
 ```
 
 Optional: **`AXIOM_HTTP_PUBLISH=3000:8080`** maps host port **3000** to the API. No secrets belong in the image; pass **`DATABASE_URL`** (and optional **`AXIOM_HTTP_ADDR`**) only at **`docker run`**.
+
+## Quickstart (Docker from GHCR)
+
+**Image repository:** `ghcr.io/codethor0/axiom-api-scanner`
+
+**Typical tags** (see [Tag scheme](docs/testing.md#ghcr-tag-scheme) in testing docs):
+
+| Tag | When it appears |
+| --- | --- |
+| **`latest`** | Latest successful publish from **`main`** |
+| **`sha-<short>`** | Same push as **`latest`**, Git commit SHA |
+| **`v0.1.0-rc.1`** (example) | Git tag **`v*`** (e.g. release candidate) |
+
+**Pull** (use a pinned tag in production when you can):
+
+```text
+docker pull ghcr.io/codethor0/axiom-api-scanner:latest
+# or: docker pull ghcr.io/codethor0/axiom-api-scanner:v0.1.0-rc.1
+```
+
+**Visibility:** the GitHub **Packages** entry for this image may default to **private**. Repository maintainers should set the package to **public** if anonymous pulls are desired; otherwise run `docker login ghcr.io` (PAT with `read:packages` or appropriate SSO).
+
+**Run** (same contract as local build: bundled **`migrations/`** and **`rules/`**, **no** Postgres inside the image):
+
+```text
+docker network create axiom-eval
+docker run -d --name axiom-eval-pg --network axiom-eval \
+  -e POSTGRES_PASSWORD=axiom -e POSTGRES_USER=axiom -e POSTGRES_DB=axiom \
+  postgres:16-alpine
+export DATABASE_URL='postgres://axiom:axiom@axiom-eval-pg:5432/axiom?sslmode=disable'
+docker run --rm --network axiom-eval -p 8080:8080 \
+  -e DATABASE_URL="$DATABASE_URL" \
+  ghcr.io/codethor0/axiom-api-scanner:latest
+```
+
+**Makefile:** `make docker-pull-ghcr` / `make docker-run-ghcr` (uses **`AXIOM_GHCR_IMAGE`**, default **`...:latest`**).
+
+**Narrow smoke on a pulled GHCR image** (skips `docker build`; **`docker pull` must succeed**):
+
+```text
+make docker-api-smoke-ghcr
+```
+
+Use **`AXIOM_GHCR_IMAGE=...`** to pin a tag. If the package is not published or is private and you are not logged in, use **`make docker-api-smoke`** (build from source) or the **`curl`** flow above. Details: [docs/testing.md](docs/testing.md#docker-api-image-packaging).
 
 ## Quickstart (API on your Postgres)
 
@@ -164,7 +209,7 @@ make release-candidate-proof
 
 ## Continuous integration
 
-Push and pull requests on `main` run GitHub Actions per [.github/workflows/ci.yml](.github/workflows/ci.yml). **Proof matrix** (what runs where): [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment).
+Push and pull requests on `main` run [.github/workflows/ci.yml](.github/workflows/ci.yml). Pushes to **`main`** and version tags **`v*`** also run [.github/workflows/container-publish.yml](.github/workflows/container-publish.yml) (GHCR API image). **Proof matrix** (what runs where): [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment).
 
 ## Documentation
 
