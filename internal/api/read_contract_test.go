@@ -22,6 +22,12 @@ var executionReadRequired = []string{
 
 var executionOperatorGuideKeys = []string{
 	"phase_role", "linkage_narration", "summaries_mirror_redacted_snapshots",
+	"phase_execution_kind_alignment", "summaries_list_detail_parity",
+}
+
+var findingReadTrustLegendKeys = []string{
+	"severity", "rule_declared_confidence", "assessment_tier",
+	"evidence_summary", "evidence_inspection", "operator_assessment",
 }
 
 // executionListItemRequired is GET .../executions items[] (summaries only; no request/response bodies).
@@ -39,7 +45,7 @@ var executionResSummaryKeys = []string{"status_code", "header_count", "body_byte
 var findingReadRequired = []string{
 	"id", "scan_id", "rule_id", "category", "severity",
 	"rule_declared_confidence", "assessment_tier", "summary",
-	"evidence_uri", "created_at",
+	"evidence_uri", "created_at", "read_trust_legend",
 }
 
 var evidenceArtifactRequired = []string{
@@ -242,6 +248,7 @@ func TestContract_findingReadAndEvidence_wireKeys(t *testing.T) {
 	if uerr := json.Unmarshal(fb, &ftop); uerr != nil {
 		t.Fatal(uerr)
 	}
+	assertJSONKeys(t, ftop["read_trust_legend"], findingReadTrustLegendKeys)
 	rawOA, ok := ftop["operator_assessment"]
 	if !ok {
 		t.Fatal("expected operator_assessment on finding read for tentative tier")

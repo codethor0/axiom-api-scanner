@@ -59,9 +59,16 @@ type ExecutionOperatorGuide struct {
 	PhaseRole                        string `json:"phase_role"`
 	LinkageNarration                 string `json:"linkage_narration"`
 	SummariesMirrorRedactedSnapshots string `json:"summaries_mirror_redacted_snapshots"`
+	// PhaseExecutionKindAlignment and SummariesListDetailParity are stable strings for comparing list vs detail and redundant top-level phase fields.
+	PhaseExecutionKindAlignment string `json:"phase_execution_kind_alignment"`
+	SummariesListDetailParity     string `json:"summaries_list_detail_parity"`
 }
 
 const executionSummariesMirrorNote = "request_summary and response_summary repeat the same persisted request/response fields (method, shortened URL, header/body counts and lengths, status, content-type); they do not add HTTP material beyond those redacted snapshots."
+
+const executionPhaseExecutionKindAlignment = "phase and execution_kind are identical on this API; both label baseline (pre-mutation exchange) versus mutated (post-mutation replay)."
+
+const executionSummariesListDetailParity = "request_summary and response_summary on this object match the GET .../executions list row for the same execution id (same redaction and derivation)."
 
 func executionPhaseRole(phase string) string {
 	switch strings.ToLower(strings.TrimSpace(phase)) {
@@ -100,6 +107,8 @@ func newExecutionOperatorGuide(r engine.ExecutionRecord) *ExecutionOperatorGuide
 		PhaseRole:                        executionPhaseRole(phase),
 		LinkageNarration:                 executionLinkageNarration(r),
 		SummariesMirrorRedactedSnapshots: executionSummariesMirrorNote,
+		PhaseExecutionKindAlignment:      executionPhaseExecutionKindAlignment,
+		SummariesListDetailParity:        executionSummariesListDetailParity,
 	}
 }
 

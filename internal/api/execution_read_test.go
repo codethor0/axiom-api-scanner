@@ -69,6 +69,12 @@ func TestNewExecutionRead_summariesAndKind(t *testing.T) {
 	if g.SummariesMirrorRedactedSnapshots == "" {
 		t.Fatal("summaries note")
 	}
+	if g.PhaseExecutionKindAlignment == "" || g.SummariesListDetailParity == "" {
+		t.Fatalf("alignment/parity %+v", g)
+	}
+	if !strings.Contains(g.PhaseExecutionKindAlignment, "execution_kind") {
+		t.Fatalf("phase/kind gloss %+v", g)
+	}
 }
 
 func TestNewExecutionRead_operatorGuide_baselineRole(t *testing.T) {

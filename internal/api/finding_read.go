@@ -66,6 +66,7 @@ type FindingListItem struct {
 //   - summary: one-line operator text (human-written or generated); not structured evidence.
 //   - evidence_summary: opaque persisted JSON (schema_version + matcher/diff payload); use evidence_inspection for a stable subset without re-parsing.
 //   - operator_assessment: optional read-model hints (tier gloss, notes/hints mirrored from evidence_summary) so clients need not parse JSON for axis meaning; severity/confidence/tier stay top-level.
+//   - read_trust_legend: stable glossary strings (detail-only) mapping each orthogonal/derived block to its role; does not repeat row values or tier-specific sentences (those stay in operator_assessment when present).
 type FindingRead struct {
 	ID                     string                     `json:"id"`
 	ScanID                 string                     `json:"scan_id"`
@@ -83,6 +84,27 @@ type FindingRead struct {
 	CreatedAt              time.Time                  `json:"created_at"`
 	EvidenceInspection     *FindingEvidenceInspection `json:"evidence_inspection,omitempty"`
 	OperatorAssessment     *FindingOperatorAssessment `json:"operator_assessment,omitempty"`
+	ReadTrustLegend        FindingReadTrustLegend     `json:"read_trust_legend"`
+}
+
+// FindingReadTrustLegend explains how top-level axes and derived JSON blocks relate (constant copy on every detail response).
+// JSON property names align with the payload keys they describe so operators can cross-reference without a second naming scheme.
+type FindingReadTrustLegend struct {
+	Severity               string `json:"severity"`
+	RuleDeclaredConfidence string `json:"rule_declared_confidence"`
+	AssessmentTier         string `json:"assessment_tier"`
+	EvidenceSummary        string `json:"evidence_summary"`
+	EvidenceInspection     string `json:"evidence_inspection"`
+	OperatorAssessment     string `json:"operator_assessment"`
+}
+
+var findingReadTrustLegend = FindingReadTrustLegend{
+	Severity:               "Impact bucket for triage (info…critical); same axis as rule impact on the row, not authoring confidence and not synonymous with assessment tier.",
+	RuleDeclaredConfidence: "Signal from rule YAML confidence (high/medium/low); describes pack/authoring quality, not post-run proof or tier.",
+	AssessmentTier:         "Post-run evidence sufficiency (confirmed/tentative/incomplete) for this row; for the tier-specific gloss see operator_assessment.evidence_sufficiency_guide when that object is present.",
+	EvidenceSummary:        "Opaque persisted matcher/diff JSON (schema_version, outcomes, diff points, mirrored axes); authoritative structured evidence; evidence_inspection is a derived, stable subset.",
+	EvidenceInspection:     "Derived inspection view: merged baseline/mutated execution ids, sorted matcher outcome lines, diff point count—no substitute for the full evidence_summary when debugging.",
+	OperatorAssessment:     "When present: row-level tier gloss plus assessment_note_codes and scanner_policy_hints mirrored from evidence_summary; optional and does not restate top-level severity or confidence string values.",
 }
 
 // FindingOperatorAssessment surfaces scanner-policy gloss and mirrored evidence codes without duplicating top-level severity / rule_declared_confidence / assessment_tier.
@@ -257,5 +279,6 @@ func NewFindingRead(f findings.Finding) FindingRead {
 		CreatedAt:              f.CreatedAt,
 		EvidenceInspection:     parseFindingEvidenceInspection(f),
 		OperatorAssessment:     parseFindingOperatorAssessment(f),
+		ReadTrustLegend:        findingReadTrustLegend,
 	}
 }

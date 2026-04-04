@@ -103,6 +103,25 @@ func TestNewFindingRead_fillsExecutionIDsFromEvidenceSummary(t *testing.T) {
 	}
 }
 
+func TestNewFindingRead_readTrustLegendStable(t *testing.T) {
+	f := findings.Finding{
+		ID:          "fid",
+		ScanID:      "sid",
+		RuleID:      "r",
+		Category:    "c",
+		Severity:    findings.SeverityLow,
+		Summary:     "s",
+		EvidenceURI: "/e",
+	}
+	r := NewFindingRead(f)
+	if r.ReadTrustLegend.Severity == "" || r.ReadTrustLegend.EvidenceSummary == "" {
+		t.Fatalf("legend %+v", r.ReadTrustLegend)
+	}
+	if !strings.Contains(r.ReadTrustLegend.AssessmentTier, "operator_assessment") {
+		t.Fatalf("expected pointer to tier gloss: %q", r.ReadTrustLegend.AssessmentTier)
+	}
+}
+
 func TestNewFindingRead_operatorAssessment_tierGuideAndMirroredCodes(t *testing.T) {
 	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
 		AssessmentTier:      "tentative",
@@ -156,8 +175,12 @@ func TestNewFindingRead_operatorAssessment_omittedWhenEmptySignals(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "operator_assessment") {
-		t.Fatalf("should omit empty operator_assessment: %s", raw)
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		t.Fatal(err)
+	}
+	if _, hasOA := top["operator_assessment"]; hasOA {
+		t.Fatalf("top-level operator_assessment should be omitted: %s", raw)
 	}
 }
 
