@@ -3,8 +3,8 @@ package v1
 import (
 	"testing"
 
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
-	"github.com/codethor0/axiom-api-scanner/internal/rules"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
 )
 
 func TestEvaluateRuleMatchers_statusUnchangedAndSimilarity(t *testing.T) {

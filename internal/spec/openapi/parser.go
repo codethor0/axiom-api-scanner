@@ -3,7 +3,7 @@ package openapi
 import (
 	"context"
 
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
 )
 
 // ExtractEndpoints loads an OpenAPI 3.x document and returns flattened endpoints.

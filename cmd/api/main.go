@@ -9,11 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/codethor0/axiom-api-scanner/internal/api"
-	"github.com/codethor0/axiom-api-scanner/internal/dbmigrate"
-	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
-	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
-	"github.com/codethor0/axiom-api-scanner/internal/storage/postgres"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/api"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/dbmigrate"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/executor/baseline"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/executor/mutation"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/storage/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

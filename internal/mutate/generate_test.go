@@ -3,8 +3,8 @@ package mutate
 import (
 	"testing"
 
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
-	"github.com/codethor0/axiom-api-scanner/internal/rules"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
 )
 
 func TestGenerateForEndpoint_deterministicOrder(t *testing.T) {

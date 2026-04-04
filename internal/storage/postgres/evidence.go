@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/codethor0/axiom-api-scanner/internal/findings"
-	"github.com/codethor0/axiom-api-scanner/internal/storage"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/findings"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/storage"
 	"github.com/jackc/pgx/v5"
 )
 

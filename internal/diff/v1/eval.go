@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
-	"github.com/codethor0/axiom-api-scanner/internal/rules"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
 )
 
 // Result is the outcome of evaluating all matchers in a rule (AND semantics).

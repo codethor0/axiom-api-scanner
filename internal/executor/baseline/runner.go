@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
-	"github.com/codethor0/axiom-api-scanner/internal/executil"
-	"github.com/codethor0/axiom-api-scanner/internal/pathutil"
-	"github.com/codethor0/axiom-api-scanner/internal/storage"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/executil"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/pathutil"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/storage"
 )
 
 // Store is the persistence surface required for baseline runs.

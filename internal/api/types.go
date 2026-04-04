@@ -1,11 +1,11 @@
 package api
 
 import (
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
-	"github.com/codethor0/axiom-api-scanner/internal/executor/baseline"
-	"github.com/codethor0/axiom-api-scanner/internal/executor/mutation"
-	"github.com/codethor0/axiom-api-scanner/internal/mutate"
-	v1plan "github.com/codethor0/axiom-api-scanner/internal/plan/v1"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/executor/baseline"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/executor/mutation"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/mutate"
+	v1plan "github.com/chomechomekitchen/axiom-api-scanner/internal/plan/v1"
 )
 
 // CreateScanRequest creates a queued scan with a declared safety posture.

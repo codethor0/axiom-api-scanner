@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
-	"github.com/codethor0/axiom-api-scanner/internal/executil"
-	"github.com/codethor0/axiom-api-scanner/internal/mutate"
-	"github.com/codethor0/axiom-api-scanner/internal/rules"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/executil"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/mutate"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
 )
 
 func TestBuildRequest_respectsScanBaseScope(t *testing.T) {

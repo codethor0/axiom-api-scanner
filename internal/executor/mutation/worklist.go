@@ -3,10 +3,10 @@ package mutation
 import (
 	"sort"
 
-	"github.com/codethor0/axiom-api-scanner/internal/engine"
-	"github.com/codethor0/axiom-api-scanner/internal/mutate"
-	v1plan "github.com/codethor0/axiom-api-scanner/internal/plan/v1"
-	"github.com/codethor0/axiom-api-scanner/internal/rules"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/engine"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/mutate"
+	v1plan "github.com/chomechomekitchen/axiom-api-scanner/internal/plan/v1"
+	"github.com/chomechomekitchen/axiom-api-scanner/internal/rules"
 )
 
 // WorkItem is one rule mutation candidate applied to one endpoint.
