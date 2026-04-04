@@ -250,7 +250,6 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 			continue
 		}
 		if diffWrap.Pass {
-			summary := fmt.Sprintf("rule %s matched for %s %s (%s)", item.Rule.ID, ep.Method, ep.PathTemplate, item.Candidate.Detail)
 			diffSummary := strings.Join(diffWrap.Reasons, "; ")
 			if diffSummary == "" {
 				diffSummary = "all_matchers_passed"
@@ -263,6 +262,7 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 				rules.RuleUsesWeakMatcherSignal(item.Rule),
 				evidenceComplete,
 			)
+			summary := findingOperatorSummary(item.Rule.ID, ep.Method, ep.PathTemplate, item.Candidate.Detail, tier, assessNotes)
 			diffPts := append([]string(nil), diffWrap.Reasons...)
 			for _, o := range diffWrap.Outcomes {
 				if strings.TrimSpace(o.Summary) != "" {
@@ -385,6 +385,16 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 		FindingIDs:          findIDs,
 		Warnings:            warns,
 	}, nil
+}
+
+// findingOperatorSummary is the persisted one-line finding text (list + detail). Non-confirmed tiers
+// append stable assessment note codes so operators see why a row is not confirmed without opening evidence_summary.
+func findingOperatorSummary(ruleID, method, pathTemplate, candidateDetail, tier string, assessNotes []string) string {
+	s := fmt.Sprintf("rule %s matched for %s %s (%s)", ruleID, method, pathTemplate, candidateDetail)
+	if strings.TrimSpace(tier) == "confirmed" || len(assessNotes) == 0 {
+		return s
+	}
+	return s + "; assessment: " + strings.Join(assessNotes, ", ")
 }
 
 func requestSnapshot(rec engine.ExecutionRecord) string {
