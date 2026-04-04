@@ -12,7 +12,23 @@
 | `golangci-lint run` | Linters from [.golangci.yml](../.golangci.yml) (includes `govet` with shadow detection) |
 | `go test ./... -count=1` | Full module tests with `AXIOM_TEST_DATABASE_URL` pointing at a job service container (`postgres:16-alpine`) |
 
-**Not in CI** (heavy, flaky, or third-party stack): `make e2e-local`, `make benchmark-findings-local`, `make e2e-crapi`, `make e2e-crapi-auth`, manual targets, or anything requiring cloned OWASP crAPI images beyond this workflow. There is **no** workflow job that runs the Docker benchmark or e2e compose stack today; reproducibility depends on contributors using the Makefile targets locally. **Contract parity:** `internal/api/read_contract_test.go` asserts list envelopes include **`items`**, **`meta`**, and **`scan_navigation`** (and matches `NewScanListNavigation`) for both executions and findings lists; local scripts additionally assert **`scan_navigation`** equals **`GET .../run/status`** **`drilldown`** for the three list paths (see **`scripts/read_trust_assert.sh`**).
+**Not in CI** (heavy, flaky, or third-party stack): `make e2e-local`, `make benchmark-findings-local`, `make e2e-crapi`, `make e2e-crapi-auth`, manual targets, or anything requiring cloned OWASP crAPI images beyond this workflow. There is **no** workflow job that runs the Docker benchmark or e2e compose stack today; reproducibility depends on contributors using the Makefile targets locally. **Contract parity:** `internal/api/read_contract_test.go` asserts list envelopes include **`items`**, **`meta`**, and **`scan_navigation`** (and matches `NewScanListNavigation`) for both executions and findings lists; **`TestContract_scanRunStatus_wireKeys_withCoverageAndDiagnostics`** also requires **`drilldown`** list paths (**`findings_list_path`**, **`executions_list_path`**, **`run_status_path`**) to match **`NewScanListNavigation`**. Local scripts additionally assert live HTTP: list **`scan_navigation`** equals **`GET .../run/status`** **`drilldown`** for those three paths (see **`scripts/read_trust_assert.sh`**).
+
+### Proof matrix (CI vs local vs environment)
+
+Use this table before release to see what is actually exercised; it does not replace reading the workflow file.
+
+| What | GitHub Actions | Local `make e2e-local` | Local `make benchmark-findings-local` |
+| --- | --- | --- | --- |
+| Migration SQL layout (`check_migrations.sh`) | yes | no (compose + app apply migrations separately) | no |
+| **`bash -n`** on proof scripts (`read_trust_assert.sh`, `e2e_local.sh`, `benchmark_findings_local.sh`) | yes | scripts run for real (**syntax-only step does not prove jq logic**) | scripts run for real |
+| **`go vet`**, **golangci-lint**, **`go test ./...`** | yes (postgres service sets **`AXIOM_TEST_DATABASE_URL`**) | optional | optional |
+| In-memory HTTP contracts (`httptest`), including list envelopes and **run-status `drilldown`** vs **`NewScanListNavigation`** | yes | no | no |
+| Docker Compose (Postgres, httpbin, optional rate stub) | no | yes | yes |
+| Live **`curl`** + **`jq`** read paths, legend/guide shapes, **`scan_navigation`** === **`drilldown`** on real API | no | yes | yes |
+| Builtin rule tier / **`bench_*`** / **`bench_summary_matrix`** | no | no | yes |
+
+**Environment-dependent:** CI needs the workflow Postgres service. Local flows need Docker (or equivalent), free default ports, **`curl`**, **`jq`**, and matching **`go`**. **`go test`** without **`AXIOM_TEST_DATABASE_URL`** skips postgres integration packages (see **Without Postgres** below). **`bash -n`** does not execute scripts; a broken **`jq`** filter could still pass CI until local Docker runs or someone executes the script by hand.
 
 ### Local Docker prerequisite summary (e2e + benchmark)
 

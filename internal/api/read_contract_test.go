@@ -416,6 +416,19 @@ func TestContract_scanRunStatus_wireKeys_withCoverageAndDiagnostics(t *testing.T
 			t.Fatalf("drilldown missing %q", k)
 		}
 	}
+	var ddTyped ScanRunDrilldownHints
+	if err := json.Unmarshal(top["drilldown"], &ddTyped); err != nil {
+		t.Fatal(err)
+	}
+	if ddTyped.ScanID != scan.ID {
+		t.Fatalf("drilldown.scan_id %q want %q", ddTyped.ScanID, scan.ID)
+	}
+	wantNav := NewScanListNavigation(scan.ID)
+	if ddTyped.FindingsListPath != wantNav.FindingsListPath ||
+		ddTyped.ExecutionsListPath != wantNav.ExecutionsListPath ||
+		ddTyped.RunStatusPath != wantNav.RunStatusPath {
+		t.Fatalf("drilldown list paths %+v vs NewScanListNavigation %+v", ddTyped, wantNav)
+	}
 }
 
 func TestContract_executionList_wireKeys(t *testing.T) {
