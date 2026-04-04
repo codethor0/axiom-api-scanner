@@ -113,6 +113,11 @@ func TestScanRunStatus_wireShape_successfulRun(t *testing.T) {
 	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{{Method: "GET", Path: "/r/{id}"}}); rerr != nil {
 		t.Fatal(rerr)
 	}
+	eps, lerr := mem.ListScanEndpoints(ctx, scan.ID, storage.EndpointListFilter{})
+	if lerr != nil || len(eps) != 1 {
+		t.Fatal(eps, lerr)
+	}
+	epID := eps[0].ID
 	if uerr := mem.UpdateBaselineState(ctx, scan.ID, storage.BaselineState{Status: "succeeded", Total: 1, Done: 1}); uerr != nil {
 		t.Fatal(uerr)
 	}
@@ -120,7 +125,7 @@ func TestScanRunStatus_wireShape_successfulRun(t *testing.T) {
 		t.Fatal(uerr)
 	}
 	if _, ierr := mem.InsertExecutionRecord(ctx, engine.ExecutionRecord{
-		ScanID: scan.ID, ScanEndpointID: "ep1", Phase: engine.PhaseMutated,
+		ScanID: scan.ID, ScanEndpointID: epID, Phase: engine.PhaseMutated,
 		RuleID: "axiom.idor.path_swap.v1", RequestMethod: "GET", RequestURL: "http://example/r/1",
 	}); ierr != nil {
 		t.Fatal(ierr)
@@ -128,7 +133,7 @@ func TestScanRunStatus_wireShape_successfulRun(t *testing.T) {
 	if _, ferr := mem.CreateFinding(ctx, storage.CreateFindingInput{
 		ScanID: scan.ID, RuleID: "axiom.idor.path_swap.v1", Category: "c",
 		Severity: findings.SeverityHigh, RuleDeclaredConfidence: "high", AssessmentTier: "confirmed",
-		Summary: "p", ScanEndpointID: "e1", BaselineExecutionID: "b1", MutatedExecutionID: "m1",
+		Summary: "p", ScanEndpointID: epID, BaselineExecutionID: "b1", MutatedExecutionID: "m1",
 		Evidence: storage.CreateEvidenceInput{},
 	}); ferr != nil {
 		t.Fatal(ferr)
@@ -240,6 +245,12 @@ func TestScanRunStatus_wireShape_blockedRun(t *testing.T) {
 	if st.RuleFamilyCoverage.UnavailableReason == nil || st.RuleFamilyCoverage.UnavailableReason.Code != "rules_dir_not_configured" {
 		t.Fatalf("coverage unavailable: %+v", st.RuleFamilyCoverage.UnavailableReason)
 	}
+	if len(st.Diagnostics.BlockedDetail) < 1 || st.Diagnostics.BlockedDetail[0].Code != "no_imported_endpoints" {
+		t.Fatalf("blocked %+v", st.Diagnostics.BlockedDetail)
+	}
+	if st.Diagnostics.BlockedDetail[0].Category != ScanDiagCategoryBlocked {
+		t.Fatalf("%+v", st.Diagnostics.BlockedDetail[0])
+	}
 }
 
 func TestScanRunStatus_wireShape_failedRun(t *testing.T) {
@@ -314,6 +325,9 @@ func TestScanRunStatus_findingsCountDriftDiagnostic(t *testing.T) {
 	for _, l := range st.Diagnostics.ConsistencyDetail {
 		if l.Code == "findings_count_drift" {
 			found = true
+			if l.Category != ScanDiagCategoryInconsistent {
+				t.Fatalf("%+v", l)
+			}
 			if !strings.Contains(l.Detail, "99") || !strings.Contains(l.Detail, "1") {
 				t.Fatalf("detail should cite counts: %q", l.Detail)
 			}
@@ -444,6 +458,9 @@ func TestScanRunStatus_wireShape_blockedAuthRelated(t *testing.T) {
 	found := false
 	for _, b := range st.Diagnostics.BlockedDetail {
 		if b.Code == "declared_security_without_auth" {
+			if b.Category != ScanDiagCategoryAuthLimit {
+				t.Fatalf("want category auth_limit, got %+v", b)
+			}
 			found = true
 			break
 		}

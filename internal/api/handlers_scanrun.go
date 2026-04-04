@@ -106,9 +106,25 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	progress := ScanRunProgress{
+		EndpointsDiscovered:         nEp,
+		BaselineEndpointsTotal:      scan.BaselineEndpointsTotal,
+		BaselineExecutionsCompleted: scan.BaselineEndpointsDone,
+		MutationCandidatesTotal:     scan.MutationCandidatesTotal,
+		MutationExecutionsCompleted: scan.MutationCandidatesDone,
+		FindingsCreated:             scan.FindingsCount,
+	}
+	readSummary := buildScanRunReadSummary(scan, nEp)
+
 	diagnostics := buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured)
 	appendAuthAndRouteDiagnostics(&diagnostics, scan, authConfigured, protectedCov)
-	diagnostics.ConsistencyDetail = scanRunConsistencyLines(scan, findingsSummary, h.Findings != nil, len(mutated), fam)
+	diagnostics.ConsistencyDetail = scanRunConsistencyLines(scan, findingsSummary, h.Findings != nil, len(mutated), fam, &scanRunReadModelConsistencyContext{
+		Progress:               progress,
+		Summary:                readSummary,
+		Protected:              protectedCov,
+		InventoryEndpointCount: nEp,
+		CoverageSecEndpoints:   secEndpoints,
+	})
 
 	out := ScanRunStatusResponse{
 		Scan: ScanRunScanSummary{
@@ -117,16 +133,9 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 			TargetLabel: scan.TargetLabel,
 			SafetyMode:  scan.SafetyMode,
 		},
-		Run: runState,
-		Progress: ScanRunProgress{
-			EndpointsDiscovered:         nEp,
-			BaselineEndpointsTotal:      scan.BaselineEndpointsTotal,
-			BaselineExecutionsCompleted: scan.BaselineEndpointsDone,
-			MutationCandidatesTotal:     scan.MutationCandidatesTotal,
-			MutationExecutionsCompleted: scan.MutationCandidatesDone,
-			FindingsCreated:             scan.FindingsCount,
-		},
-		Summary:                buildScanRunReadSummary(scan, nEp),
+		Run:                    runState,
+		Progress:               progress,
+		Summary:                readSummary,
 		FindingsSummary:        findingsSummary,
 		RuleFamilyCoverage:     fam,
 		Guidance:               buildScanRunGuidance(scan, nEp, secEndpoints, authConfigured),
@@ -173,27 +182,31 @@ func buildScanRunDiagnostics(scan engine.Scan, endpointsN, secEndpoints int, aut
 	}
 	if endpointsN == 0 {
 		d.BlockedDetail = append(d.BlockedDetail, ScanRunDiagnosticLine{
-			Code:   "no_imported_endpoints",
-			Detail: "no scan_endpoints rows; import OpenAPI before baseline or orchestrated run",
+			Code:     "no_imported_endpoints",
+			Category: ScanDiagCategoryBlocked,
+			Detail:   "no imported operations (scan_endpoints); import OpenAPI before baseline or orchestrated run",
 		})
 	}
 	if secEndpoints > 0 && !authConfigured {
 		d.BlockedDetail = append(d.BlockedDetail, ScanRunDiagnosticLine{
-			Code:   "declared_security_without_auth",
-			Detail: strconv.Itoa(secEndpoints) + " imported operation(s) declare security schemes; scan has no auth_headers",
+			Code:     "declared_security_without_auth",
+			Category: ScanDiagCategoryAuthLimit,
+			Detail:   strconv.Itoa(secEndpoints) + " operations declare OpenAPI security; scan has no auth_headers (baseline/mutation may see 401/403 only)",
 		})
 	}
 	if endpointsN > 0 && scan.BaselineEndpointsTotal == 0 && scan.RunPhase == engine.PhasePlanned {
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
-			Code:   "baseline_not_recorded",
-			Detail: "run_phase is planned and baseline_totals on scan row are zero; baseline has not written progress yet",
+			Code:     "baseline_not_recorded",
+			Category: ScanDiagCategorySkipped,
+			Detail:   "run_phase planned and baseline totals on scan row are zero (baseline has not persisted progress)",
 		})
 	}
 	if scan.BaselineRunStatus == "succeeded" && scan.MutationRunStatus == "succeeded" && scan.MutationCandidatesTotal == 0 &&
 		(scan.RunPhase == engine.PhaseFindingsComplete || scan.RunPhase == engine.PhaseMutationComplete) {
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
-			Code:   "zero_mutation_candidates",
-			Detail: "mutation pass completed with candidates_total 0 (no eligible rule/work items for imported endpoints in V1)",
+			Code:     "zero_mutation_candidates",
+			Category: ScanDiagCategorySkipped,
+			Detail:   "mutation_run_status succeeded with mutation_candidates_total 0 (no eligible V1 work for this import/rules)",
 		})
 	}
 	if scan.RunPhase == engine.PhaseFailed {

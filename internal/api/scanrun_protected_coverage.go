@@ -82,9 +82,10 @@ func appendAuthAndRouteDiagnostics(d *ScanRunDiagnostics, scan engine.Scan, auth
 	if pr.ExecutionsRepositoryConfigured && bs == "succeeded" &&
 		pr.EndpointsDeclaringSecurity > 0 && pr.DeclaredSecurityInBaselineScopeEndpoints == 0 {
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
-			Code: "declared_secure_operations_not_in_baseline_runner_scope",
+			Category: ScanDiagCategorySkipped,
+			Code:     "declared_secure_operations_not_in_baseline_runner_scope",
 			Detail: strconv.Itoa(pr.EndpointsDeclaringSecurity) +
-				" imported operation(s) declare OpenAPI security but none are GET or JSON POST with a JSON request body (baseline runner scope for this scanner)",
+				" operations declare security but none are in baseline scope (GET or JSON POST with JSON body per runner)",
 		})
 	}
 
@@ -92,9 +93,10 @@ func appendAuthAndRouteDiagnostics(d *ScanRunDiagnostics, scan engine.Scan, auth
 		pr.DeclaredSecurityInBaselineScopeEndpoints > 0 &&
 		pr.BaselineRecordsDeclaringSecurity == 0 && bs == "succeeded" {
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
-			Code: "declared_secure_baseline_scope_without_recorded_baseline_http",
+			Category: ScanDiagCategorySkipped,
+			Code:     "declared_secure_baseline_scope_without_recorded_baseline_http",
 			Detail: strconv.Itoa(pr.DeclaredSecurityInBaselineScopeEndpoints) +
-				" imported operation(s) declare OpenAPI security and are in baseline scope, but no baseline execution_record references those scan_endpoint IDs",
+				" in-scope secure operations but no baseline execution_record links those scan_endpoint IDs",
 		})
 	}
 
@@ -103,24 +105,27 @@ func appendAuthAndRouteDiagnostics(d *ScanRunDiagnostics, scan engine.Scan, auth
 		pr.DeclaredSecureBaselineRecordsHTTP2xx == 0 &&
 		(pr.DeclaredSecureBaselineRecordsHTTP401 > 0 || pr.DeclaredSecureBaselineRecordsHTTP403 > 0) {
 		code := "declared_secure_baseline_responses_only_401_or_403"
+		cat := ScanDiagCategorySkipped
 		if !authHeadersConfigured {
 			code = "declared_secure_baseline_without_auth_headers_only_401_or_403"
+			cat = ScanDiagCategoryAuthLimit
 		}
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
-			Code: code,
-			Detail: "baseline execution_records for operations declaring OpenAPI security have recorded HTTP 401 count " +
-				strconv.Itoa(pr.DeclaredSecureBaselineRecordsHTTP401) + ", 403 count " +
-				strconv.Itoa(pr.DeclaredSecureBaselineRecordsHTTP403) +
-				", and 2xx count " + strconv.Itoa(pr.DeclaredSecureBaselineRecordsHTTP2xx),
+			Category: cat,
+			Code:     code,
+			Detail: "declared-secure baseline HTTP: 401=" + strconv.Itoa(pr.DeclaredSecureBaselineRecordsHTTP401) +
+				" 403=" + strconv.Itoa(pr.DeclaredSecureBaselineRecordsHTTP403) +
+				" 2xx=" + strconv.Itoa(pr.DeclaredSecureBaselineRecordsHTTP2xx),
 		})
 	}
 
 	if pr.ExecutionsRepositoryConfigured && ms == "succeeded" && scan.MutationCandidatesTotal > 0 &&
 		pr.EndpointsDeclaringSecurity > 0 && pr.MutatedRecordsDeclaringSecurity == 0 {
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
-			Code: "mutation_http_not_recorded_for_declared_secure_endpoints",
-			Detail: "mutation_candidates_total is " + strconv.Itoa(scan.MutationCandidatesTotal) +
-				" but no mutated execution_record references an endpoint row that declares OpenAPI security schemes",
+			Category: ScanDiagCategorySkipped,
+			Code:     "mutation_http_not_recorded_for_declared_secure_endpoints",
+			Detail: "mutation_candidates_total=" + strconv.Itoa(scan.MutationCandidatesTotal) +
+				" but no mutated execution_record on declared-secure endpoints",
 		})
 	}
 
@@ -128,9 +133,10 @@ func appendAuthAndRouteDiagnostics(d *ScanRunDiagnostics, scan engine.Scan, auth
 		pr.EndpointsWithoutSecurityDeclaration > 0 && pr.MutatedRecordsWithoutSecurityDeclaration == 0 &&
 		pr.MutatedRecordsDeclaringSecurity > 0 {
 		d.SkippedDetail = append(d.SkippedDetail, ScanRunDiagnosticLine{
-			Code: "mutated_http_only_recorded_for_declared_secure_endpoints",
+			Category: ScanDiagCategorySkipped,
+			Code:     "mutated_http_only_recorded_for_declared_secure_endpoints",
 			Detail: strconv.Itoa(pr.EndpointsWithoutSecurityDeclaration) +
-				" imported operation(s) declare no OpenAPI security, but every mutated execution_record references an operation that declares security",
+				" public operations but mutated rows only on declared-secure endpoints",
 		})
 	}
 }

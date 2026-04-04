@@ -60,7 +60,7 @@ type ScanControlRequest struct {
 	Action string `json:"action"`
 }
 
-// ScanRunProgress counts only persisted facts from the scan row and endpoint inventory (no estimates).
+// ScanRunProgress counts from the scan row plus inventory-derived endpoint count. "Discovered" is imported `scan_endpoints` row count for this scan (same integer as summary.endpoints_imported). Baseline/mutation counters mirror scan columns; findings_created mirrors scans.findings_count (same integer as summary.findings_created when built together).
 type ScanRunProgress struct {
 	EndpointsDiscovered         int `json:"endpoints_discovered"`
 	BaselineEndpointsTotal      int `json:"baseline_endpoints_total"`
@@ -90,10 +90,19 @@ type ScanRunState struct {
 	MutationRunError  string `json:"mutation_run_error,omitempty"`
 }
 
+// Diagnostic category for scan run status (automation; optional on each line). See docs/api.md.
+const (
+	ScanDiagCategoryBlocked      = "blocked"
+	ScanDiagCategorySkipped      = "skipped"
+	ScanDiagCategoryInconsistent = "inconsistent"
+	ScanDiagCategoryAuthLimit    = "auth_limit"
+)
+
 // ScanRunDiagnosticLine is one grounded operator line (code stable for automation; detail human-readable).
 type ScanRunDiagnosticLine struct {
-	Code   string `json:"code"`
-	Detail string `json:"detail,omitempty"`
+	Code     string `json:"code"`
+	Detail   string `json:"detail,omitempty"`
+	Category string `json:"category,omitempty"`
 }
 
 // ScanRunDiagnostics lists narrow, factual skip/block hints derived only from persisted scan columns and endpoint inventory.
@@ -150,7 +159,7 @@ type ScanRunPhaseCounts struct {
 	Skipped   int    `json:"skipped"`
 }
 
-// ScanRunReadSummary is a compact operator read model: counts from the scan row plus imported endpoint inventory.
+// ScanRunReadSummary is a compact operator read model: counts from the scan row plus imported endpoint inventory. endpoints_imported equals progress.endpoints_discovered; findings_created equals progress.findings_created (duplicated for operator ergonomics beside baseline/mutation breakdown, not alternate sources).
 type ScanRunReadSummary struct {
 	EndpointsImported int                `json:"endpoints_imported"`
 	Baseline          ScanRunPhaseCounts `json:"baseline"`

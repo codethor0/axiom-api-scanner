@@ -9,11 +9,21 @@ import (
 // UnavailableReason short-circuits family consistency checks in these tests.
 var consistencySkipFamilies = ScanRunRuleFamilyCoverage{UnavailableReason: &ScanRunDiagnosticLine{Code: "x"}}
 
+func testScanRunConsistencyCtx(scan engine.Scan, nEp, covSec int, pr ScanRunProtectedRouteCoverage) *scanRunReadModelConsistencyContext {
+	return &scanRunReadModelConsistencyContext{
+		Progress:               ScanRunProgress{EndpointsDiscovered: nEp, FindingsCreated: scan.FindingsCount},
+		Summary:                buildScanRunReadSummary(scan, nEp),
+		Protected:              pr,
+		InventoryEndpointCount: nEp,
+		CoverageSecEndpoints:   covSec,
+	}
+}
+
 func TestScanRunConsistencyLines_findingsDrift(t *testing.T) {
 	scan := engine.Scan{FindingsCount: 2}
 	sum := ScanFindingsSummary{Total: 1}
-	lines := scanRunConsistencyLines(scan, sum, true, 0, consistencySkipFamilies)
-	if len(lines) != 1 || lines[0].Code != "findings_count_drift" {
+	lines := scanRunConsistencyLines(scan, sum, true, 0, consistencySkipFamilies, testScanRunConsistencyCtx(scan, 0, 0, ScanRunProtectedRouteCoverage{}))
+	if len(lines) != 1 || lines[0].Code != "findings_count_drift" || lines[0].Category != ScanDiagCategoryInconsistent {
 		t.Fatalf("%+v", lines)
 	}
 }
@@ -21,7 +31,7 @@ func TestScanRunConsistencyLines_findingsDrift(t *testing.T) {
 func TestScanRunConsistencyLines_skipsFindingsWhenRepoNotConfigured(t *testing.T) {
 	scan := engine.Scan{FindingsCount: 5}
 	sum := ScanFindingsSummary{Total: 0}
-	lines := scanRunConsistencyLines(scan, sum, false, 0, consistencySkipFamilies)
+	lines := scanRunConsistencyLines(scan, sum, false, 0, consistencySkipFamilies, testScanRunConsistencyCtx(scan, 0, 0, ScanRunProtectedRouteCoverage{}))
 	for _, l := range lines {
 		if l.Code == "findings_count_drift" {
 			t.Fatalf("unexpected drift %+v", lines)
@@ -31,7 +41,7 @@ func TestScanRunConsistencyLines_skipsFindingsWhenRepoNotConfigured(t *testing.T
 
 func TestScanRunConsistencyLines_baselineDoneExceedsTotal(t *testing.T) {
 	scan := engine.Scan{BaselineEndpointsTotal: 1, BaselineEndpointsDone: 3}
-	lines := scanRunConsistencyLines(scan, ScanFindingsSummary{}, false, 0, consistencySkipFamilies)
+	lines := scanRunConsistencyLines(scan, ScanFindingsSummary{}, false, 0, consistencySkipFamilies, testScanRunConsistencyCtx(scan, 0, 0, ScanRunProtectedRouteCoverage{}))
 	if len(lines) != 1 || lines[0].Code != "baseline_progress_inconsistent" {
 		t.Fatalf("%+v", lines)
 	}
@@ -39,9 +49,48 @@ func TestScanRunConsistencyLines_baselineDoneExceedsTotal(t *testing.T) {
 
 func TestScanRunConsistencyLines_mutationDoneExceedsTotal(t *testing.T) {
 	scan := engine.Scan{MutationCandidatesTotal: 2, MutationCandidatesDone: 5}
-	lines := scanRunConsistencyLines(scan, ScanFindingsSummary{}, false, 0, consistencySkipFamilies)
+	lines := scanRunConsistencyLines(scan, ScanFindingsSummary{}, false, 0, consistencySkipFamilies, testScanRunConsistencyCtx(scan, 0, 0, ScanRunProtectedRouteCoverage{}))
 	if len(lines) != 1 || lines[0].Code != "mutation_progress_inconsistent" {
 		t.Fatalf("%+v", lines)
+	}
+}
+
+func TestScanRunConsistencyLines_readModelEndpointsMismatch(t *testing.T) {
+	scan := engine.Scan{}
+	ctx := testScanRunConsistencyCtx(scan, 2, 0, ScanRunProtectedRouteCoverage{})
+	ctx.Progress.EndpointsDiscovered = 3
+	lines := scanRunConsistencyLines(scan, ScanFindingsSummary{}, false, 0, consistencySkipFamilies, ctx)
+	var found bool
+	for _, l := range lines {
+		if l.Code == "read_model_endpoints_mismatch" {
+			found = true
+			if l.Category != ScanDiagCategoryInconsistent {
+				t.Fatal(l)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("want read_model_endpoints_mismatch, got %+v", lines)
+	}
+}
+
+func TestScanRunConsistencyLines_mutatedExecutionsNotClassified(t *testing.T) {
+	scan := engine.Scan{}
+	pr := ScanRunProtectedRouteCoverage{
+		ExecutionsRepositoryConfigured:         true,
+		MutatedRecordsDeclaringSecurity:        0,
+		MutatedRecordsWithoutSecurityDeclaration: 0,
+	}
+	lines := scanRunConsistencyLines(scan, ScanFindingsSummary{}, false, 2, consistencySkipFamilies, testScanRunConsistencyCtx(scan, 0, 0, pr))
+	var found bool
+	for _, l := range lines {
+		if l.Code == "mutated_executions_not_classified_in_protected_route" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("want mutated classification line, got %+v", lines)
 	}
 }
 
@@ -50,7 +99,7 @@ func TestScanRunConsistencyLines_familySumExceedsMutatedRows(t *testing.T) {
 		IDORPathOrQuery: ScanRunFamilyCoverageEntry{MutatedExecutions: 2},
 		MassAssignment:  ScanRunFamilyCoverageEntry{MutatedExecutions: 2},
 	}
-	lines := scanRunConsistencyLines(engine.Scan{}, ScanFindingsSummary{}, false, 2, fam)
+	lines := scanRunConsistencyLines(engine.Scan{}, ScanFindingsSummary{}, false, 2, fam, nil)
 	found := false
 	for _, l := range lines {
 		if l.Code == "family_coverage_mutated_sum_exceeds_rows" {
@@ -67,7 +116,7 @@ func TestScanRunConsistencyLines_perFamilyExceedsRows(t *testing.T) {
 	fam := ScanRunRuleFamilyCoverage{
 		IDORPathOrQuery: ScanRunFamilyCoverageEntry{MutatedExecutions: 5},
 	}
-	lines := scanRunConsistencyLines(engine.Scan{}, ScanFindingsSummary{}, false, 1, fam)
+	lines := scanRunConsistencyLines(engine.Scan{}, ScanFindingsSummary{}, false, 1, fam, nil)
 	found := false
 	for _, l := range lines {
 		if l.Code == "family_coverage_mutated_exceeds_rows" {
