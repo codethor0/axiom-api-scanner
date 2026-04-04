@@ -2,26 +2,23 @@ package findings
 
 import "strings"
 
-// AssessFindingTier derives finding_status / confidence tier from severity, declared rule
-// confidence, matcher strength, and evidence completeness. No ML or speculative scoring.
-func AssessFindingTier(sev Severity, ruleDeclConfidence string, weakMatcherSignal bool, evidenceComplete bool) (tier string, notes []string) {
+// AssessFindingTier derives assessment tier from severity, declared rule confidence, weak-matcher
+// notes (non-empty => tentative with those codes), and evidence completeness. No ML or speculative scoring.
+func AssessFindingTier(sev Severity, ruleDeclConfidence string, weakMatcherNotes []string, evidenceComplete bool) (tier string, notes []string) {
 	if !evidenceComplete {
 		return "incomplete", []string{"evidence_incomplete"}
 	}
-	dc := strings.ToLower(strings.TrimSpace(ruleDeclConfidence))
-	if weakMatcherSignal {
-		notes = append(notes, "weak_matcher_signal")
-		return "tentative", notes
+	if len(weakMatcherNotes) > 0 {
+		return "tentative", append([]string(nil), weakMatcherNotes...)
 	}
+	dc := strings.ToLower(strings.TrimSpace(ruleDeclConfidence))
 	if dc == "low" {
-		notes = append(notes, "rule_declared_low_confidence")
-		return "tentative", notes
+		return "tentative", []string{"rule_declared_low_confidence"}
 	}
 	switch sev {
 	case SeverityInfo, SeverityLow:
-		notes = append(notes, "low_signal_severity_bucket")
-		return "tentative", notes
+		return "tentative", []string{"low_signal_severity_bucket"}
 	default:
-		return "confirmed", notes
+		return "confirmed", nil
 	}
 }

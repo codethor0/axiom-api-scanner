@@ -256,10 +256,11 @@ func (r *Runner) Run(ctx context.Context, scanID string, work []WorkItem) (Resul
 			}
 			evidenceComplete := strings.TrimSpace(baseline.ID) != "" && strings.TrimSpace(mutID) != "" &&
 				baseline.ResponseStatus > 0 && mutRec.ResponseStatus > 0 && strings.TrimSpace(diffSummary) != ""
+			weakNotes := rules.WeakMatcherAssessmentNotes(item.Rule)
 			tier, assessNotes := findings.AssessFindingTier(
 				findings.Severity(strings.TrimSpace(item.Rule.Severity)),
 				item.Rule.Confidence,
-				rules.RuleUsesWeakMatcherSignal(item.Rule),
+				weakNotes,
 				evidenceComplete,
 			)
 			summary := findingOperatorSummary(item.Rule.ID, ep.Method, ep.PathTemplate, item.Candidate.Detail, tier, assessNotes)

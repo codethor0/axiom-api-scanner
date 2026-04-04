@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fixed local finding-quality benchmark: same stack as e2e-local (httpbin + Postgres + rules/builtin).
 # Covers all four supported V1 mutation families via testdata/e2e/httpbin-openapi.yaml + rule outcomes:
-#   - IDOR + path normalization: builtin examples use response_body_similarity@0.85 -> tentative + weak_matcher in summary
+#   - IDOR + path normalization: similarity@0.85 -> tentative + assessment notes weak_body_similarity_matcher + similarity_min_score_0.85
 #   - Mass assignment: strong matchers -> confirmed
 #   - Rate-limit header rotation: mutated httpbin responses do not satisfy header-diff matcher -> expect zero findings
 set -euo pipefail
@@ -156,8 +156,30 @@ all_tier "$RULE_IDOR" "tentative"
 all_tier "$RULE_MASS" "confirmed"
 all_tier "$RULE_PATHNORM" "tentative"
 
-summaries_contain "$RULE_IDOR" 'assessment: weak_matcher_signal'
-summaries_contain "$RULE_PATHNORM" 'assessment: weak_matcher_signal'
+summaries_contain "$RULE_IDOR" 'weak_body_similarity_matcher'
+summaries_contain "$RULE_IDOR" 'similarity_min_score_0.85'
+summaries_contain "$RULE_PATHNORM" 'weak_body_similarity_matcher'
+summaries_contain "$RULE_PATHNORM" 'similarity_min_score_0.85'
+
+# Evidence JSON: tentative rows carry the same assessment_notes as the list summary (read-path parity).
+assert_tentative_evidence_notes() {
+  local fid="$1"
+  local detail
+  detail="$(curl -sf "$AXIOM_URL/v1/findings/$fid")"
+  echo "$detail" | jq -e '(.evidence_summary.assessment_notes | index("weak_body_similarity_matcher")) != null' >/dev/null
+  echo "$detail" | jq -e '(.evidence_summary.assessment_notes | index("similarity_min_score_0.85")) != null' >/dev/null
+  echo "$detail" | jq -e '.assessment_tier == "tentative"' >/dev/null
+}
+
+FID_IDOR="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_IDOR"'") | .id')"
+FID_PATH="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')"
+assert_tentative_evidence_notes "$FID_IDOR"
+assert_tentative_evidence_notes "$FID_PATH"
+
+FID_MASS="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_MASS"'") | .id')"
+MASS_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_MASS")"
+echo "$MASS_DETAIL" | jq -e '.assessment_tier == "confirmed"' >/dev/null
+echo "$MASS_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
 
 # Read-path: endpoint detail for an endpoint that has findings.
 EP_ID="$(echo "$FINDINGS" | jq -er '.items[0].scan_endpoint_id')"

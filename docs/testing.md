@@ -153,12 +153,12 @@ This runs `scripts/e2e_local.sh`, which:
 
 | Family | Builtin rule id | Proven outcome on this fixture |
 | --- | --- | --- |
-| IDOR path swap | **`axiom.idor.path_swap.v1`** | Exactly **one** finding, **`assessment_tier`** **`tentative`**; **`response_body_similarity`** @ **0.85** is a weak matcher signal; **`summary`** contains **`assessment: weak_matcher_signal`**. |
-| Mass assignment | **`axiom.mass.privilege_merge.v1`** | Exactly **one** finding, **`confirmed`**; strong matchers only. |
-| Path normalization | **`axiom.pathnorm.variant.v1`** | Exactly **one** finding, **`tentative`**; same weak similarity note in **`summary`**. |
+| IDOR path swap | **`axiom.idor.path_swap.v1`** | Exactly **one** finding, **`assessment_tier`** **`tentative`**; **`response_body_similarity`** @ **0.85** yields assessment notes **`weak_body_similarity_matcher`** and **`similarity_min_score_0.85`** (mirrored in **`summary`** and **`evidence_summary.assessment_notes`**). **`confirmed`** requires no weak-signal matchers (e.g. **`similarity.min_score` >= 0.9** and no body-substring matcher). |
+| Mass assignment | **`axiom.mass.privilege_merge.v1`** | Exactly **one** finding, **`confirmed`**; **`evidence_summary.assessment_notes`** empty/absent. |
+| Path normalization | **`axiom.pathnorm.variant.v1`** | Exactly **one** finding, **`tentative`**; same weak-similarity note pair as IDOR on this fixture. |
 | Rate-limit headers | **`axiom.ratelimit.header_rotate.v1`** | **No** finding row: mutation may run, but **`response_header_differs_from_baseline`** on **`X-RateLimit-Remaining`** does not succeed against httpbin’s responses (header absent or unchanged). This is an intentional **no-finding** path, not a skipped family. |
 
-**Read-path checks:** asserts **`GET .../run/status`** (**`progression_source`** **`adhoc`**, **`findings_recording_status`** **`complete`**), **`GET .../endpoints/{id}`** ( **`investigation`** + **`drilldown`** ), finding detail, and **`GET .../executions/{id}`** for the linked mutated execution.
+**Read-path checks:** asserts **`GET .../run/status`** (**`progression_source`** **`adhoc`**, **`findings_recording_status`** **`complete`**), **`GET .../endpoints/{id}`** ( **`investigation`** + **`drilldown`** ), **`GET .../findings/{id}`** (tentative rows include the weak-similarity **`assessment_notes`**; confirmed mass assignment omits them), and **`GET .../executions/{id}`** for a linked mutated execution.
 
 **What it does not prove:** Query-swap IDOR variants (not in this spec), real rate-limit appliances, **`X-RateLimit-Remaining`** semantics on production targets, or coverage beyond the four builtin examples. Single-endpoint concurrency and large imports are out of scope.
 
