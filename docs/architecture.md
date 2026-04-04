@@ -10,7 +10,7 @@ The HTTP API creates and updates scans, imports OpenAPI specs per scan, lists im
 
 ### Scan run orchestrator (`internal/orchestrator`)
 
-A narrow `Service` sequences the safe V1 path: ensure scan is addressable, advance persisted `run_phase`, run baseline (with optional skip when already succeeded), load rules, build mutation work, run mutations, then advance phases to `findings_complete` and mark the scan completed. It is **synchronous** and single-goroutine from the caller (HTTP handler); cancellation is honored via request context and scan cancel flag between phase steps. Phase transitions are validated in `internal/engine` (`ValidateScanRunTransition`); the database stores `scans.run_phase` and `scans.run_error`.
+A narrow `Service` sequences the safe V1 path: ensure scan is addressable, advance persisted `run_phase`, run baseline (skipping HTTP when the scan row already records a successful completed baseline unless `force_rerun_baseline`), load rules, build mutation work, run mutations, then advance phases to `findings_complete` and mark the scan completed. On **`resume`** after `failed`, if baseline already succeeded, it reconciles `run_phase` to `baseline_complete` first so the operator read model does not imply baseline work is pending when persisted counters say it finished. It is **synchronous** and single-goroutine from the caller (HTTP handler); cancellation is honored via request context and scan cancel flag between phase steps. Phase transitions are validated in `internal/engine` (`ValidateScanRunTransition`, including optional `baseline_complete` -> `baseline_running` only when forcing baseline rerun); the database stores `scans.run_phase` and `scans.run_error`.
 
 ### Worker (`cmd/worker`)
 
@@ -70,7 +70,7 @@ Repositories cover scans (target, auth, `run_phase`, `run_error`, baseline and m
 4. `POST /v1/scans/{id}/executions/baseline` runs the baseline runner alone, writes baseline `execution_records`, updates baseline progress fields, returns runner output plus planner decisions and a capped mutation preview from `AXIOM_RULES_DIR`.
 5. `POST /v1/scans/{id}/executions/mutations` runs mutations sequentially from the same rule set (no broad concurrency). Writes mutated `execution_records` (with stable `candidate_key` for resume), runs diff vs the latest baseline per endpoint, and persists findings plus evidence when all matchers pass. Re-running with the same candidate reuses the stored mutated execution and does not insert a second finding for the same evidence tuple.
 6. `GET /v1/scans/{id}/executions` and `GET .../executions/{executionID}` return stored exchanges (optional `phase` and `scan_endpoint_id` query filters on the list).
-7. `GET /v1/scans/{id}/run/status` returns phase plus progress counters for operators.
+7. `GET /v1/scans/{id}/run/status` returns grouped `scan`, `run`, `progress`, and `coverage` objects (plus legacy top-level mirrors) so operators see metadata, orchestration phase, runner status lines, and persisted counters only.
 
 ## Limitations (honest)
 

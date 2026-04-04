@@ -49,31 +49,39 @@ Transitions scan lifecycle state only (`start`, `pause`, `cancel`). Baseline exe
 
 ### GET /v1/scans/{scanID}/run/status
 
-Operator read model for orchestration. Returns `200` with a stable JSON object:
+Operator read model for orchestration. Returns `200` with a stable JSON object. Fields are derived from persisted scan and endpoint rows (no percentage estimates).
 
-| Field | Meaning |
+| Group | Fields |
 | --- | --- |
-| `scan_id` | Scan UUID |
-| `phase` | Current `run_phase` (`planned`, `baseline_running`, `baseline_complete`, `mutation_running`, `mutation_complete`, `findings_complete`, `failed`, `canceled`) |
-| `scan_status` | Lifecycle `status` on the same row (`queued`, `running`, etc.) |
-| `progress` | Object with `endpoints_discovered` (count of imported endpoints), `baseline_executions_completed`, `mutation_executions_completed`, `findings_created` (denormalized counters from the scan row) |
-| `coverage` | Operator hints (no secret values): `auth_headers_configured`, `endpoints_declaring_security`, and `hints` (e.g. missing auth when the spec declares security, or confirmation when auth is configured). |
-| `last_error` | Populated when `phase` is `failed` or when baseline/mutation failure messages apply |
+| `scan` | `id`, `status` (lifecycle), `target_label`, `safety_mode` |
+| `run` | `phase` (`run_phase`), `baseline_run_status`, `baseline_run_error`, `mutation_run_status`, `mutation_run_error`, `last_error` (primary operator message when failed) |
+| `progress` | `endpoints_discovered` (imported endpoint count), `baseline_endpoints_total`, `baseline_executions_completed`, `mutation_candidates_total`, `mutation_executions_completed`, `findings_created` (all from the scan row / import) |
+| `coverage` | `auth_headers_configured`, `endpoints_declaring_security`, `hints` (no secret values) |
 
-Counts reflect stored scan columns, not a separate progress bar. Per-endpoint skip reasons (for example `post_requires_json_request_body`) appear in the **`POST .../executions/baseline`** response body under `result.skipped_detail`, not in this status object.
+**Backward-compatible mirrors:** `scan_id`, `phase`, `scan_status`, and `last_error` duplicate `scan.id`, `run.phase`, `scan.status`, and `run.last_error` for existing clients.
+
+**Phase semantics:** Exactly one `run_phase` is stored at a time. Allowed values: `planned`, `baseline_running`, `baseline_complete`, `mutation_running`, `mutation_complete`, `findings_complete`, `failed`, `canceled`. Illegal transitions return `409` from `POST .../run` when attempted by the orchestrator.
+
+Per-endpoint skip reasons for baseline appear under **`POST .../executions/baseline`** `result.skipped_detail`, not in this status object.
 
 ### POST /v1/scans/{scanID}/run
 
-Runs the **orchestrated V1 pipeline** in-process: endpoint list, baseline (skipping repeat HTTP when baseline already succeeded unless forced), rule planning, mutation execution, diff/matcher evaluation, and finding persistence. Request body:
+**Canonical V1 sync orchestration route.** Same path for `start`, `resume`, and `cancel`; no duplicate “run” endpoints. Runs the pipeline **in the HTTP request thread** (no queue, no background scheduler).
+
+Request body:
 
 ```json
 { "action": "start" | "resume" | "cancel", "force_rerun_baseline": false }
 ```
 
-- `start`: normal forward run (scan may be auto-started from `queued` as today).
-- `resume`: same pipeline with **resume retry** semantics for `run_phase` (e.g. after `failed`).
-- `cancel`: sets lifecycle cancel when allowed and persists `run_phase` `canceled`. Does **not** require the orchestrator service to be configured; persistence (`Scans` + `ScanRun`) is enough.
-- `force_rerun_baseline`: when `true`, baseline HTTP is not skipped even if a prior successful baseline exists.
+- `start`: normal forward run (scan may be auto-started from `queued`). `run_phase` `failed` does **not** advance without `resume`.
+- `resume`: **retry after `failed`**. Before work resumes, if baseline already succeeded (`baseline_run_status`, totals, and done counts on the scan row show a complete successful pass), orchestration reconciles `run_phase` to `baseline_complete` so operators are not shown `baseline_running` for work that is already done. Baseline HTTP is **not** rerun unless `force_rerun_baseline` is `true`. Mutation work continues from persisted candidates: existing `(scan, endpoint, rule, candidate_key)` mutated rows are reused; findings use a unique evidence tuple and do not duplicate on resume.
+- `cancel`: sets lifecycle cancel when allowed and persists `run_phase` `canceled`. Does **not** require `Orchestrator` to be configured; `Scans` + `ScanRun` are enough.
+- `force_rerun_baseline`: when `true`, allows transition from `baseline_complete` back to `baseline_running` and re-executes baseline HTTP (explicit opt-in).
+
+**Resume does not guarantee:** replays of unrelated historical partial state beyond what is stored in `execution_records` and scan counters; correctness of the target if it changed between attempts; completion if rules or imported endpoints change mid-flight (determinism is per persisted work list and store state at resume time).
+
+**Sync-only meaning:** `start` and `resume` block until the orchestrator finishes, fails, or the request context is canceled. Use `GET .../run/status` to read persisted phase and counters without driving work.
 
 Successful responses return **`200`** with the same JSON shape as `GET .../run/status` (after `start` or `resume` complete synchronously). Errors:
 

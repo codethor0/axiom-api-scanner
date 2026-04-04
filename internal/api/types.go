@@ -29,12 +29,32 @@ type ScanControlRequest struct {
 	Action string `json:"action"`
 }
 
-// ScanRunProgress is a stable read model for operator observability.
+// ScanRunProgress counts only persisted facts from the scan row and endpoint inventory (no estimates).
 type ScanRunProgress struct {
 	EndpointsDiscovered         int `json:"endpoints_discovered"`
+	BaselineEndpointsTotal      int `json:"baseline_endpoints_total"`
 	BaselineExecutionsCompleted int `json:"baseline_executions_completed"`
+	MutationCandidatesTotal     int `json:"mutation_candidates_total"`
 	MutationExecutionsCompleted int `json:"mutation_executions_completed"`
 	FindingsCreated             int `json:"findings_created"`
+}
+
+// ScanRunScanSummary is operator-facing scan metadata (no credentials).
+type ScanRunScanSummary struct {
+	ID          string `json:"id"`
+	Status      string `json:"status"`
+	TargetLabel string `json:"target_label"`
+	SafetyMode  string `json:"safety_mode"`
+}
+
+// ScanRunState is the persisted orchestration snapshot (mutually exclusive run_phase; runner status lines from storage).
+type ScanRunState struct {
+	Phase               string `json:"phase"`
+	BaselineRunStatus   string `json:"baseline_run_status,omitempty"`
+	BaselineRunError    string `json:"baseline_run_error,omitempty"`
+	MutationRunStatus   string `json:"mutation_run_status,omitempty"`
+	MutationRunError    string `json:"mutation_run_error,omitempty"`
+	LastError           string `json:"last_error,omitempty"`
 }
 
 // ScanRunCoverage surfaces operator hints for partial or auth-dependent coverage (no secrets).
@@ -44,13 +64,16 @@ type ScanRunCoverage struct {
 	Hints                      []string `json:"hints,omitempty"`
 }
 
-// ScanRunStatusResponse describes orchestration phase and progress for one scan.
+// ScanRunStatusResponse groups scan metadata, run state, coverage, and progress counters.
+// Top-level scan_id, phase, scan_status, and last_error mirror scan.* and run.* for stable JSON clients.
 type ScanRunStatusResponse struct {
+	Scan     ScanRunScanSummary `json:"scan"`
+	Run      ScanRunState       `json:"run"`
+	Progress ScanRunProgress    `json:"progress"`
+	Coverage ScanRunCoverage    `json:"coverage"`
 	ScanID     string          `json:"scan_id"`
 	Phase      string          `json:"phase"`
 	ScanStatus string          `json:"scan_status"`
-	Progress   ScanRunProgress `json:"progress"`
-	Coverage   ScanRunCoverage `json:"coverage"`
 	LastError  string          `json:"last_error,omitempty"`
 }
 

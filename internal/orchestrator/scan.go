@@ -12,6 +12,11 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
+// BaselineRunner runs or skips baseline HTTP work for orchestration.
+type BaselineRunner interface {
+	RunWithOptions(ctx context.Context, scanID string, opts baseline.RunOptions) (baseline.Result, error)
+}
+
 // RunStore is the persistence surface required for scan orchestration.
 type RunStore interface {
 	storage.ScanRepository
@@ -23,7 +28,7 @@ type RunStore interface {
 // Service sequences baseline, rule planning, mutation, and finding persistence for V1 scans.
 type Service struct {
 	Store     RunStore
-	Baseline  *baseline.Runner
+	Baseline  BaselineRunner
 	Mutations *mutation.Runner
 	LoadRules func() ([]rules.Rule, error)
 }
@@ -70,41 +75,63 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 		return nil
 	}
 
-	if advErr := s.advancePhase(ctx, scanID, engine.PhaseBaselineRunning, opts.ResumeRetry); advErr != nil {
-		return advErr
+	if recErr := s.reconcileRunPhaseForResume(ctx, scanID, &scan, opts); recErr != nil {
+		return recErr
 	}
-	if canceled, canErr := scanCanceled(ctx, s.Store, scanID); canErr != nil {
-		return canErr
+
+	needBaseline := opts.ForceRerunBaseline || !baselineSucceeded(scan)
+	if needBaseline {
+		if advErr := s.advancePhase(ctx, scanID, engine.PhaseBaselineRunning, opts); advErr != nil {
+			return advErr
+		}
+		if canceled, canErr := scanCanceled(ctx, s.Store, scanID); canErr != nil {
+			return canErr
+		} else if canceled {
+			return s.finishCancel(ctx, scanID)
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, ctxErr.Error())
+			return ctxErr
+		}
+
+		bOpts := baseline.RunOptions{Force: opts.ForceRerunBaseline}
+		if _, baseErr := s.Baseline.RunWithOptions(ctx, scanID, bOpts); baseErr != nil {
+			_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, baseErr.Error())
+			return baseErr
+		}
+
+		scan, err = s.Store.GetScan(ctx, scanID)
+		if err != nil {
+			return err
+		}
+		if scan.BaselineRunStatus != "succeeded" {
+			msg := strings.TrimSpace(scan.BaselineRunError)
+			if msg == "" {
+				msg = "baseline_did_not_succeed"
+			}
+			return fail(msg)
+		}
+	} else {
+		// Baseline already succeeded and not forcing rerun: stay honest in phase without re-entering baseline_running.
+		if advErr := s.advancePhase(ctx, scanID, engine.PhaseBaselineComplete, opts); advErr != nil {
+			return advErr
+		}
+		scan, err = s.Store.GetScan(ctx, scanID)
+		if err != nil {
+			return err
+		}
+	}
+
+	if canceled, canMid := scanCanceled(ctx, s.Store, scanID); canMid != nil {
+		return canMid
 	} else if canceled {
 		return s.finishCancel(ctx, scanID)
 	}
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, ctxErr.Error())
-		return ctxErr
-	}
 
-	bOpts := baseline.RunOptions{Force: opts.ForceRerunBaseline}
-	if _, baseErr := s.Baseline.RunWithOptions(ctx, scanID, bOpts); baseErr != nil {
-		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, baseErr.Error())
-		return baseErr
-	}
-
-	scan, err = s.Store.GetScan(ctx, scanID)
-	if err != nil {
-		return err
-	}
-	if scan.BaselineRunStatus != "succeeded" {
-		msg := strings.TrimSpace(scan.BaselineRunError)
-		if msg == "" {
-			msg = "baseline_did_not_succeed"
-		}
-		return fail(msg)
-	}
-
-	if errBC := s.advancePhase(ctx, scanID, engine.PhaseBaselineComplete, opts.ResumeRetry); errBC != nil {
+	if errBC := s.advancePhase(ctx, scanID, engine.PhaseBaselineComplete, opts); errBC != nil {
 		return errBC
 	}
-	if errMR := s.advancePhase(ctx, scanID, engine.PhaseMutationRunning, opts.ResumeRetry); errMR != nil {
+	if errMR := s.advancePhase(ctx, scanID, engine.PhaseMutationRunning, opts); errMR != nil {
 		return errMR
 	}
 	if canceled, canErr2 := scanCanceled(ctx, s.Store, scanID); canErr2 != nil {
@@ -139,16 +166,38 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	if errMC := s.advancePhase(ctx, scanID, engine.PhaseMutationComplete, opts.ResumeRetry); errMC != nil {
+	if errMC := s.advancePhase(ctx, scanID, engine.PhaseMutationComplete, opts); errMC != nil {
 		return errMC
 	}
-	if errFC := s.advancePhase(ctx, scanID, engine.PhaseFindingsComplete, opts.ResumeRetry); errFC != nil {
+	if errFC := s.advancePhase(ctx, scanID, engine.PhaseFindingsComplete, opts); errFC != nil {
 		return errFC
 	}
 
 	if setErr := s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanCompleted, engine.PhaseFindingsComplete, ""); setErr != nil {
 		return setErr
 	}
+	return nil
+}
+
+func baselineSucceeded(scan engine.Scan) bool {
+	return scan.BaselineRunStatus == "succeeded" && scan.BaselineEndpointsTotal > 0 &&
+		scan.BaselineEndpointsDone >= scan.BaselineEndpointsTotal
+}
+
+// reconcileRunPhaseForResume maps persisted baseline success back to run_phase after a failed orchestration
+// so resume does not pretend the scan is still waiting on baseline HTTP.
+func (s *Service) reconcileRunPhaseForResume(ctx context.Context, scanID string, scan *engine.Scan, opts Options) error {
+	if !opts.ResumeRetry || scan.RunPhase != engine.PhaseFailed {
+		return nil
+	}
+	if !baselineSucceeded(*scan) {
+		return nil
+	}
+	if err := s.Store.PatchScanRunPhase(ctx, scanID, engine.PhaseBaselineComplete, ""); err != nil {
+		return err
+	}
+	scan.RunPhase = engine.PhaseBaselineComplete
+	scan.RunError = ""
 	return nil
 }
 
@@ -159,7 +208,7 @@ func (s *Service) loadRules() ([]rules.Rule, error) {
 	return s.LoadRules()
 }
 
-func (s *Service) advancePhase(ctx context.Context, scanID string, to engine.ScanRunPhase, resumeRetry bool) error {
+func (s *Service) advancePhase(ctx context.Context, scanID string, to engine.ScanRunPhase, opts Options) error {
 	if err := ctx.Err(); err != nil {
 		_ = s.Store.SetScanStatusAndRunPhase(ctx, scanID, engine.ScanFailed, engine.PhaseFailed, err.Error())
 		return err
@@ -171,8 +220,8 @@ func (s *Service) advancePhase(ctx context.Context, scanID string, to engine.Sca
 	if scan.RunPhase == to {
 		return nil
 	}
-	if err := engine.ValidateScanRunTransition(scan.RunPhase, to, resumeRetry); err != nil {
-		if canFastForward(scan, to) {
+	if err := engine.ValidateScanRunTransition(scan.RunPhase, to, opts.ResumeRetry, opts.ForceRerunBaseline); err != nil {
+		if canFastForward(scan, to, opts.ForceRerunBaseline) {
 			return s.Store.PatchScanRunPhase(ctx, scanID, to, "")
 		}
 		return err
@@ -188,10 +237,13 @@ func scanCanceled(ctx context.Context, st RunStore, scanID string) (bool, error)
 	return scan.Status == engine.ScanCanceled || scan.RunPhase == engine.PhaseCanceled, nil
 }
 
-func canFastForward(scan engine.Scan, to engine.ScanRunPhase) bool {
+func canFastForward(scan engine.Scan, to engine.ScanRunPhase, forceBaseline bool) bool {
 	switch to {
 	case engine.PhaseBaselineRunning:
-		return scan.RunPhase == engine.PhasePlanned
+		if scan.RunPhase == engine.PhasePlanned {
+			return true
+		}
+		return forceBaseline && scan.RunPhase == engine.PhaseBaselineComplete && scan.BaselineRunStatus == "succeeded"
 	case engine.PhaseBaselineComplete:
 		return scan.BaselineRunStatus == "succeeded" && (scan.RunPhase == engine.PhasePlanned || scan.RunPhase == engine.PhaseBaselineRunning)
 	case engine.PhaseMutationRunning:

@@ -557,6 +557,44 @@ func TestScanRunStatus_returnsProgress(t *testing.T) {
 	if st.Coverage.AuthHeadersConfigured || st.Coverage.EndpointsDeclaringSecurity != 0 {
 		t.Fatalf("coverage %+v", st.Coverage)
 	}
+	if st.Scan.ID != scan.ID || st.Run.Phase != st.Phase || st.Scan.Status != st.ScanStatus {
+		t.Fatalf("nested scan/run must mirror top-level fields: %+v", st)
+	}
+}
+
+func TestScanRunStatus_progressReflectsPersistedTotals(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "lbl", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uerr := mem.UpdateBaselineState(ctx, scan.ID, storage.BaselineState{Status: "succeeded", Error: "", Total: 3, Done: 3}); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if uerr := mem.UpdateMutationState(ctx, scan.ID, storage.MutationState{Status: "in_progress", Error: "", Total: 10, Done: 4}); uerr != nil {
+		t.Fatal(uerr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/run/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var st ScanRunStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Progress.BaselineEndpointsTotal != 3 || st.Progress.BaselineExecutionsCompleted != 3 {
+		t.Fatalf("baseline totals %+v", st.Progress)
+	}
+	if st.Progress.MutationCandidatesTotal != 10 || st.Progress.MutationExecutionsCompleted != 4 {
+		t.Fatalf("mutation totals %+v", st.Progress)
+	}
+	if st.Run.BaselineRunStatus != "succeeded" || st.Run.MutationRunStatus != "in_progress" {
+		t.Fatalf("run state %+v", st.Run)
+	}
 }
 
 func TestScanRunStatus_coverageHintsDeclaredSecurity(t *testing.T) {
@@ -649,6 +687,9 @@ func TestScanRunControl_cancelWithoutOrchestrator(t *testing.T) {
 	}
 	if st.Phase != string(engine.PhaseCanceled) || st.ScanStatus != string(engine.ScanCanceled) {
 		t.Fatalf("%+v", st)
+	}
+	if st.Run.Phase != st.Phase || st.Scan.ID != st.ScanID || st.Scan.Status != st.ScanStatus {
+		t.Fatalf("nested fields must mirror top-level: %+v", st)
 	}
 }
 

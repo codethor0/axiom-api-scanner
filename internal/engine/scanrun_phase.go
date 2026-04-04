@@ -44,7 +44,8 @@ func IsTerminal(p ScanRunPhase) bool {
 
 // ValidateScanRunTransition enforces the directed graph of phase moves.
 // resumeRetry allows leaving PhaseFailed to retry forward execution.
-func ValidateScanRunTransition(from, to ScanRunPhase, resumeRetry bool) error {
+// forceBaselineWhenComplete allows BaselineComplete -> BaselineRunning for force_rerun_baseline (explicit operator opt-in).
+func ValidateScanRunTransition(from, to ScanRunPhase, resumeRetry, forceBaselineWhenComplete bool) error {
 	if from == to {
 		return nil
 	}
@@ -54,7 +55,7 @@ func ValidateScanRunTransition(from, to ScanRunPhase, resumeRetry bool) error {
 	if from == PhaseFailed && !resumeRetry {
 		return fmt.Errorf("%w: cannot transition from failed without explicit resume retry", ErrInvalidScanRunPhase)
 	}
-	allowed := forwardTransitions(from, resumeRetry)
+	allowed := forwardTransitions(from, resumeRetry, forceBaselineWhenComplete)
 	for _, a := range allowed {
 		if a == to {
 			return nil
@@ -63,14 +64,18 @@ func ValidateScanRunTransition(from, to ScanRunPhase, resumeRetry bool) error {
 	return fmt.Errorf("%w: cannot transition from %q to %q", ErrInvalidScanRunPhase, from, to)
 }
 
-func forwardTransitions(from ScanRunPhase, resumeRetry bool) []ScanRunPhase {
+func forwardTransitions(from ScanRunPhase, resumeRetry, forceBaselineWhenComplete bool) []ScanRunPhase {
 	switch from {
 	case PhasePlanned:
 		return []ScanRunPhase{PhaseBaselineRunning, PhaseCanceled, PhaseFailed}
 	case PhaseBaselineRunning:
 		return []ScanRunPhase{PhaseBaselineComplete, PhaseFailed, PhaseCanceled}
 	case PhaseBaselineComplete:
-		return []ScanRunPhase{PhaseMutationRunning, PhaseFailed, PhaseCanceled}
+		out := []ScanRunPhase{PhaseMutationRunning, PhaseFailed, PhaseCanceled}
+		if forceBaselineWhenComplete {
+			out = append([]ScanRunPhase{PhaseBaselineRunning}, out...)
+		}
+		return out
 	case PhaseMutationRunning:
 		return []ScanRunPhase{PhaseMutationComplete, PhaseFailed, PhaseCanceled}
 	case PhaseMutationComplete:
@@ -80,6 +85,7 @@ func forwardTransitions(from ScanRunPhase, resumeRetry bool) []ScanRunPhase {
 	case PhaseFailed:
 		if resumeRetry {
 			// Orchestrator chooses next concrete phase from persisted execution state.
+			// BaselineComplete is allowed so resume can fast-forward after reconcile without re-entering baseline_running when baseline already succeeded.
 			return []ScanRunPhase{PhaseBaselineRunning, PhaseBaselineComplete, PhaseMutationRunning}
 		}
 		return nil

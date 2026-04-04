@@ -60,22 +60,40 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 	if secEndpoints == 0 && !authConfigured && len(endpoints) > 0 {
 		cov.Hints = append(cov.Hints, "no operations in the imported spec declare security schemes; auth may still be required by the target for routes not reflected in OpenAPI")
 	}
+	last := lastRunError(scan)
 	out := ScanRunStatusResponse{
-		ScanID:     scan.ID,
-		Phase:      string(scan.RunPhase),
-		ScanStatus: string(scan.Status),
+		Scan: ScanRunScanSummary{
+			ID:          scan.ID,
+			Status:      string(scan.Status),
+			TargetLabel: scan.TargetLabel,
+			SafetyMode:  scan.SafetyMode,
+		},
+		Run: ScanRunState{
+			Phase:             string(scan.RunPhase),
+			BaselineRunStatus: strings.TrimSpace(scan.BaselineRunStatus),
+			BaselineRunError:  strings.TrimSpace(scan.BaselineRunError),
+			MutationRunStatus: strings.TrimSpace(scan.MutationRunStatus),
+			MutationRunError:  strings.TrimSpace(scan.MutationRunError),
+			LastError:         last,
+		},
 		Progress: ScanRunProgress{
 			EndpointsDiscovered:         len(endpoints),
+			BaselineEndpointsTotal:      scan.BaselineEndpointsTotal,
 			BaselineExecutionsCompleted: scan.BaselineEndpointsDone,
+			MutationCandidatesTotal:     scan.MutationCandidatesTotal,
 			MutationExecutionsCompleted: scan.MutationCandidatesDone,
 			FindingsCreated:             scan.FindingsCount,
 		},
-		Coverage:  cov,
-		LastError: lastRunError(scan),
+		Coverage:   cov,
+		ScanID:     scan.ID,
+		Phase:      string(scan.RunPhase),
+		ScanStatus: string(scan.Status),
+		LastError:  last,
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
+// lastRunError prefers orchestrator run_error when failed, then surfaced baseline/mutation errors when run or subordinate status failed.
 func lastRunError(scan engine.Scan) string {
 	if scan.RunPhase == engine.PhaseFailed && strings.TrimSpace(scan.RunError) != "" {
 		return strings.TrimSpace(scan.RunError)
