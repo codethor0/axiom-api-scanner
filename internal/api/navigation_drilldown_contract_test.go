@@ -121,13 +121,12 @@ func TestContract_endpointDetail_filteredListsFromDrilldown(t *testing.T) {
 	if execResp.StatusCode != http.StatusOK {
 		t.Fatalf("executions filtered %d %s", execResp.StatusCode, ebody)
 	}
-	var execEnv struct {
-		Items []struct {
-			ScanEndpointID string `json:"scan_endpoint_id"`
-		} `json:"items"`
-	}
+	var execEnv ExecutionListResponse
 	if jerr := json.Unmarshal(ebody, &execEnv); jerr != nil {
 		t.Fatal(jerr)
+	}
+	if execEnv.ScanNavigation != NewScanListNavigation(scan.ID) {
+		t.Fatalf("filtered executions scan_navigation %+v want %+v", execEnv.ScanNavigation, NewScanListNavigation(scan.ID))
 	}
 	if len(execEnv.Items) != 1 || execEnv.Items[0].ScanEndpointID != epID {
 		t.Fatalf("executions items %+v", execEnv.Items)
@@ -142,13 +141,12 @@ func TestContract_endpointDetail_filteredListsFromDrilldown(t *testing.T) {
 	if findResp.StatusCode != http.StatusOK {
 		t.Fatalf("findings filtered %d %s", findResp.StatusCode, fbody)
 	}
-	var findEnv struct {
-		Items []struct {
-			ScanEndpointID string `json:"scan_endpoint_id"`
-		} `json:"items"`
-	}
+	var findEnv FindingListResponse
 	if jerr := json.Unmarshal(fbody, &findEnv); jerr != nil {
 		t.Fatal(jerr)
+	}
+	if findEnv.ScanNavigation != NewScanListNavigation(scan.ID) {
+		t.Fatalf("filtered findings scan_navigation %+v want %+v", findEnv.ScanNavigation, NewScanListNavigation(scan.ID))
 	}
 	if len(findEnv.Items) != 1 || findEnv.Items[0].ScanEndpointID != epID {
 		t.Fatalf("findings items %+v", findEnv.Items)
@@ -215,6 +213,64 @@ func TestContract_findingsList_itemIdOpensFindingDetail(t *testing.T) {
 	}
 	if fr.ID != f.ID || fr.RuleID != list.Items[0].RuleID || fr.Summary != list.Items[0].Summary {
 		t.Fatalf("detail %+v list %+v", fr, list.Items[0])
+	}
+}
+
+func TestContract_executionList_itemIdOpensExecutionDetail(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eid, ierr := mem.InsertExecutionRecord(ctx, engine.ExecutionRecord{
+		ScanID: scan.ID, ScanEndpointID: "66666666-6666-6666-6666-666666666666",
+		Phase: engine.PhaseBaseline, RequestMethod: "GET", RequestURL: "https://ex/z",
+		ResponseStatus: 418,
+	})
+	if ierr != nil {
+		t.Fatal(ierr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	lresp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/executions?limit=10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbody, _ := io.ReadAll(lresp.Body)
+	_ = lresp.Body.Close()
+	if lresp.StatusCode != http.StatusOK {
+		t.Fatalf("%d %s", lresp.StatusCode, lbody)
+	}
+	var list ExecutionListResponse
+	if jerr := json.Unmarshal(lbody, &list); jerr != nil {
+		t.Fatal(jerr)
+	}
+	if len(list.Items) != 1 || list.Items[0].ID != eid {
+		t.Fatalf("%+v", list.Items)
+	}
+	p := list.Items[0].ExecutionDetailPath
+	dresp, err := http.Get(srv.URL + p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbody, _ := io.ReadAll(dresp.Body)
+	_ = dresp.Body.Close()
+	if dresp.StatusCode != http.StatusOK {
+		t.Fatalf("%d %s", dresp.StatusCode, dbody)
+	}
+	var er ExecutionRead
+	if jerr := json.Unmarshal(dbody, &er); jerr != nil {
+		t.Fatal(jerr)
+	}
+	if er.ID != eid || er.Phase != list.Items[0].Phase || er.ExecutionKind != list.Items[0].ExecutionKind {
+		t.Fatalf("detail %+v list %+v", er, list.Items[0])
+	}
+	if er.RequestSummary.Method != list.Items[0].RequestSummary.Method {
+		t.Fatalf("method list=%q detail=%q", list.Items[0].RequestSummary.Method, er.RequestSummary.Method)
+	}
+	if er.ResponseSummary.StatusCode != list.Items[0].ResponseSummary.StatusCode {
+		t.Fatalf("status list=%d detail=%d", list.Items[0].ResponseSummary.StatusCode, er.ResponseSummary.StatusCode)
 	}
 }
 

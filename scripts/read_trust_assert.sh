@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Shared jq assertions for read_trust_legend (finding detail) and operator_guide (execution detail).
 # Sourced by scripts/benchmark_findings_local.sh and scripts/e2e_local.sh.
+#
+# GitHub Actions runs bash -n on this file only (syntax). Behavior is mirrored in Go by
+# internal/api/read_contract_test.go and internal/api/navigation_drilldown_contract_test.go
+# (including filtered list scan_navigation in TestContract_endpointDetail_filteredListsFromDrilldown).
 
 # List envelope scan_navigation must match canonical paths for the scan id (findings + executions list + run status).
 assert_scan_list_navigation_matches_scan() {
