@@ -180,7 +180,14 @@ Invalid `include_summary` or `declares_security` values return **`400`** `invali
 
 Returns **`200`** with one **endpoint detail** object for an imported `scan_endpoints` row belonging to the scan. **`404`** when the scan or endpoint id is missing or the endpoint does not belong to the scan.
 
-**Shape:** All **endpoint read** fields (same as **`items[]`** in the list) with **`summary` always present** (grounded counts: baseline executions, mutation executions, findings for this `scan_endpoint_id`; same SQL semantics as list `include_summary=true`). Plus **`drilldown`**: `scan_endpoint_id` (same UUID as `id`) for use as the `scan_endpoint_id` query parameter on **`GET .../executions`** and **`GET .../findings`**.
+**Shape:** All **endpoint read** fields (same as **`items[]`** in the list) with **`summary` always present** (grounded counts: baseline executions, mutation executions, findings for this `scan_endpoint_id`; same SQL semantics as list `include_summary=true`). Plus:
+
+- **`investigation`** (persisted facts only; never percentages or synthetic rollups): optional nested blocks are omitted when there is nothing to say.
+  - **`baseline`**, **`mutation`**: each appears only when the corresponding **`summary`** count is greater than zero and a latest stored row exists for that phase; **`latest_response_status`** is the HTTP status on the **newest** `execution_record` for this endpoint and phase (`created_at` desc, `id` desc tie-break in PostgreSQL).
+  - **`findings`**: present when **`summary.findings_recorded` > 0**; **`by_assessment_tier`** maps **non-zero** counts for linked rows whose **`assessment_tier`** is exactly `confirmed`, `tentative`, or `incomplete` (after trim). Findings linked to the endpoint but with another tier contribute to **`summary.findings_recorded`** only—they do not appear in **`by_assessment_tier`** until they match one of those three stored values.
+- **`drilldown`**: `scan_endpoint_id` (same UUID as `id`); **`executions_list_query`** and **`findings_list_query`** each hold the literal query substring `scan_endpoint_id=<uuid>` so clients can append it to **`GET .../executions`** and **`GET .../findings`** for the same scan (no absolute URLs in the payload).
+
+**List vs detail:** **`GET .../endpoints`** does **not** include **`investigation`** or **`drilldown`** on each item; only this detail route does.
 
 The response does **not** embed execution or finding rows; use list routes with that filter (and per-row GETs for full HTTP or `evidence_summary`) to inspect related data.
 

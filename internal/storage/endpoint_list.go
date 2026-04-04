@@ -37,10 +37,19 @@ type EndpointInventorySummary struct {
 	FindingsRecorded           int
 }
 
+// EndpointInvestigationFacts is persisted-only signals for operator drilldown on one endpoint.
+// Filled only by GetEndpointInventory when IncludeSummary is true; list inventory pages leave it nil.
+type EndpointInvestigationFacts struct {
+	LatestBaselineResponseStatus *int
+	LatestMutatedResponseStatus  *int
+	FindingsByAssessmentTier     map[string]int
+}
+
 // EndpointInventoryEntry is one imported operation plus inventory summaries.
 type EndpointInventoryEntry struct {
-	Endpoint engine.ScanEndpoint
-	Summary  EndpointInventorySummary
+	Endpoint      engine.ScanEndpoint
+	Summary       EndpointInventorySummary
+	Investigation *EndpointInvestigationFacts
 }
 
 // EndpointInventoryOptions configures endpoint inventory list pages (summary joins are skipped when IncludeSummary is false).

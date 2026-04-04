@@ -277,10 +277,58 @@ func (m *memRepositories) GetEndpointInventory(_ context.Context, scanID, endpoi
 				}
 			}
 			ent.Summary = sum
+			ent.Investigation = m.computeEndpointInvestigationLocked(scanID, ep.ID)
 		}
 		return ent, nil
 	}
 	return storage.EndpointInventoryEntry{}, storage.ErrNotFound
+}
+
+func (m *memRepositories) computeEndpointInvestigationLocked(scanID, scanEndpointID string) *storage.EndpointInvestigationFacts {
+	var bestBase, bestMut *engine.ExecutionRecord
+	for _, rec := range m.execRecords {
+		if rec.ScanID != scanID || rec.ScanEndpointID != scanEndpointID {
+			continue
+		}
+		switch rec.Phase {
+		case engine.PhaseBaseline:
+			if bestBase == nil || rec.CreatedAt.After(bestBase.CreatedAt) ||
+				(rec.CreatedAt.Equal(bestBase.CreatedAt) && rec.ID > bestBase.ID) {
+				r := rec
+				bestBase = &r
+			}
+		case engine.PhaseMutated:
+			if bestMut == nil || rec.CreatedAt.After(bestMut.CreatedAt) ||
+				(rec.CreatedAt.Equal(bestMut.CreatedAt) && rec.ID > bestMut.ID) {
+				r := rec
+				bestMut = &r
+			}
+		}
+	}
+	tier := make(map[string]int)
+	for _, f := range m.byScan[scanID] {
+		if f.ScanEndpointID != scanEndpointID {
+			continue
+		}
+		switch strings.TrimSpace(f.AssessmentTier) {
+		case "confirmed", "tentative", "incomplete":
+			tier[strings.TrimSpace(f.AssessmentTier)]++
+		default:
+		}
+	}
+	inv := &storage.EndpointInvestigationFacts{}
+	if bestBase != nil {
+		s := bestBase.ResponseStatus
+		inv.LatestBaselineResponseStatus = &s
+	}
+	if bestMut != nil {
+		s := bestMut.ResponseStatus
+		inv.LatestMutatedResponseStatus = &s
+	}
+	if len(tier) > 0 {
+		inv.FindingsByAssessmentTier = tier
+	}
+	return inv
 }
 
 func (m *memRepositories) InsertExecutionRecord(_ context.Context, rec engine.ExecutionRecord) (string, error) {

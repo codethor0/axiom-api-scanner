@@ -55,15 +55,35 @@ type EndpointListResponse struct {
 	Meta  ListPageMeta   `json:"meta"`
 }
 
-// EndpointDrilldownHints repeats the persisted scan_endpoint id for related list filters (no URLs encoded; operators pass scan_endpoint_id on executions and findings lists).
-type EndpointDrilldownHints struct {
-	ScanEndpointID string `json:"scan_endpoint_id"`
+// EndpointPhaseInvestigationRead is the latest grounded execution signal for one phase (persisted response_status on the newest row; not a health score).
+type EndpointPhaseInvestigationRead struct {
+	LatestResponseStatus int `json:"latest_response_status"`
 }
 
-// EndpointDetailResponse is GET /v1/scans/{scanID}/endpoints/{endpointID}: same fields as EndpointRead (summary always includes grounded execution/finding counts) plus drilldown hints.
+// EndpointFindingsInvestigationRead groups linked finding tiers for this scan_endpoint_id only (counts are row tallies, not percentages).
+type EndpointFindingsInvestigationRead struct {
+	ByAssessmentTier map[string]int `json:"by_assessment_tier,omitempty"`
+}
+
+// EndpointInvestigationRead is operator-facing persisted facts for one endpoint (detail only; list items omit this block).
+type EndpointInvestigationRead struct {
+	Baseline *EndpointPhaseInvestigationRead   `json:"baseline,omitempty"`
+	Mutation *EndpointPhaseInvestigationRead   `json:"mutation,omitempty"`
+	Findings *EndpointFindingsInvestigationRead `json:"findings,omitempty"`
+}
+
+// EndpointDrilldownHints repeats the persisted scan_endpoint id and query-ready strings for related list reads (no absolute URLs; append to scan-scoped list paths).
+type EndpointDrilldownHints struct {
+	ScanEndpointID       string `json:"scan_endpoint_id"`
+	ExecutionsListQuery  string `json:"executions_list_query"`
+	FindingsListQuery    string `json:"findings_list_query"`
+}
+
+// EndpointDetailResponse is GET /v1/scans/{scanID}/endpoints/{endpointID}: same fields as EndpointRead (summary always includes grounded execution/finding counts), investigation signals, and drilldown hints.
 type EndpointDetailResponse struct {
 	EndpointRead
-	Drilldown EndpointDrilldownHints `json:"drilldown"`
+	Investigation EndpointInvestigationRead `json:"investigation"`
+	Drilldown     EndpointDrilldownHints    `json:"drilldown"`
 }
 
 // ScanControlRequest transitions scan lifecycle state.

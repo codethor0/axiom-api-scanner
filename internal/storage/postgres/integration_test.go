@@ -394,4 +394,19 @@ func TestFindingWrite_integration(t *testing.T) {
 	if got1.Endpoint.ID != ep.ID || got1.Summary != inv.Records[0].Summary {
 		t.Fatalf("GetEndpointInventory %+v vs list row %+v", got1, inv.Records[0])
 	}
+	if inv.Records[0].Investigation != nil {
+		t.Fatalf("list inventory must not populate Investigation")
+	}
+	if got1.Investigation == nil {
+		t.Fatal("GetEndpointInventory expected investigation facts")
+	}
+	if got1.Investigation.LatestBaselineResponseStatus == nil || *got1.Investigation.LatestBaselineResponseStatus != 200 {
+		t.Fatalf("latest baseline status %+v", got1.Investigation)
+	}
+	if got1.Investigation.LatestMutatedResponseStatus == nil || *got1.Investigation.LatestMutatedResponseStatus != 200 {
+		t.Fatalf("latest mutated status %+v", got1.Investigation)
+	}
+	if got1.Investigation.FindingsByAssessmentTier == nil || got1.Investigation.FindingsByAssessmentTier["confirmed"] != 1 {
+		t.Fatalf("finding tiers %+v", got1.Investigation.FindingsByAssessmentTier)
+	}
 }

@@ -129,6 +129,9 @@ func TestContract_endpointList_wireEnvelope(t *testing.T) {
 				t.Fatalf("missing key %q in %s", k, obj)
 			}
 		}
+		if _, bad := m["investigation"]; bad {
+			t.Fatalf("list item must not include investigation: %s", obj)
+		}
 		if it.Summary == nil {
 			t.Fatal("expected summary with default include_summary")
 		}

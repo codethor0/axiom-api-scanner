@@ -11,6 +11,7 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // ReplaceScanEndpoints replaces all imported endpoints for a scan.
@@ -280,13 +281,25 @@ func (s *Store) GetEndpointInventory(ctx context.Context, scanID, endpointID str
 SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
        se.security_scheme_hints::text, se.request_content_types::text, se.response_content_types::text,
        se.request_body_json, se.created_at,
-       COALESCE(b.n, 0)::int, COALESCE(m.n, 0)::int, COALESCE(f.n, 0)::int
+       COALESCE(b.n, 0)::int, COALESCE(m.n, 0)::int, COALESCE(f.n, 0)::int,
+       (SELECT er.response_status FROM execution_records er
+          WHERE er.scan_id = $1 AND er.scan_endpoint_id = se.id AND er.phase = 'baseline'
+          ORDER BY er.created_at DESC, er.id DESC LIMIT 1),
+       (SELECT er.response_status FROM execution_records er
+          WHERE er.scan_id = $1 AND er.scan_endpoint_id = se.id AND er.phase = 'mutated'
+          ORDER BY er.created_at DESC, er.id DESC LIMIT 1),
+       (SELECT COUNT(*)::int FROM findings fn WHERE fn.scan_id = $1 AND fn.scan_endpoint_id = se.id AND trim(fn.assessment_tier) = 'confirmed'),
+       (SELECT COUNT(*)::int FROM findings fn WHERE fn.scan_id = $1 AND fn.scan_endpoint_id = se.id AND trim(fn.assessment_tier) = 'tentative'),
+       (SELECT COUNT(*)::int FROM findings fn WHERE fn.scan_id = $1 AND fn.scan_endpoint_id = se.id AND trim(fn.assessment_tier) = 'incomplete')
 FROM scan_endpoints se
 LEFT JOIN b ON b.scan_endpoint_id = se.id
 LEFT JOIN m ON m.scan_endpoint_id = se.id
 LEFT JOIN f ON f.scan_endpoint_id = se.id
 WHERE se.scan_id = $1 AND se.id = $2`
 		var sum storage.EndpointInventorySummary
+		var latestBase, latestMut *int
+		var nlb, nm pgtype.Int4
+		var nConfirmed, nTentative, nIncomplete int32
 		err := s.pool.QueryRow(ctx, q, scanID, endpointID).Scan(
 			&ent.Endpoint.ID,
 			&ent.Endpoint.ScanID,
@@ -301,6 +314,11 @@ WHERE se.scan_id = $1 AND se.id = $2`
 			&sum.BaselineExecutionsRecorded,
 			&sum.MutationExecutionsRecorded,
 			&sum.FindingsRecorded,
+			&nlb,
+			&nm,
+			&nConfirmed,
+			&nTentative,
+			&nIncomplete,
 		)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return storage.EndpointInventoryEntry{}, storage.ErrNotFound
@@ -309,6 +327,32 @@ WHERE se.scan_id = $1 AND se.id = $2`
 			return storage.EndpointInventoryEntry{}, fmt.Errorf("get endpoint inventory: %w", err)
 		}
 		ent.Summary = sum
+		if nlb.Valid {
+			v := int(nlb.Int32)
+			latestBase = &v
+		}
+		if nm.Valid {
+			v := int(nm.Int32)
+			latestMut = &v
+		}
+		var tier map[string]int
+		if nConfirmed > 0 || nTentative > 0 || nIncomplete > 0 {
+			tier = make(map[string]int)
+			if nConfirmed > 0 {
+				tier["confirmed"] = int(nConfirmed)
+			}
+			if nTentative > 0 {
+				tier["tentative"] = int(nTentative)
+			}
+			if nIncomplete > 0 {
+				tier["incomplete"] = int(nIncomplete)
+			}
+		}
+		ent.Investigation = &storage.EndpointInvestigationFacts{
+			LatestBaselineResponseStatus: latestBase,
+			LatestMutatedResponseStatus:  latestMut,
+			FindingsByAssessmentTier:     tier,
+		}
 	} else {
 		q := `
 SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
