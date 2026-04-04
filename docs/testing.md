@@ -204,7 +204,9 @@ This runs `scripts/e2e_local.sh`, which:
 
 A ninth line documents **CI**: **`phase=ci_github_actions`**, **`outcome=outcome_not_in_matrix`**, meaning the matrix is **not** produced in GitHub Actions (Docker benchmark only). A short **`bench_outcome_legend`** block repeats the four outcomes in prose. **`go run ./scripts/benchharness -outcome-class`** and **`-rule-family`** emit single values for scripts.
 
-**Read-path checks:** **`GET .../run/status`** (**`adhoc`**, **`findings_recording_status` `complete`**; scan B asserts **`rule_family_coverage.rate_limit_header_rotation.exercised`**), endpoint detail, finding detail (**`evidence_summary.assessment_notes`** and **`interpretation_hints`** parity with **`summary`** for tentatives; both empty for confirmed mass/rate rows), execution detail, plus harness **`bench_*`** lines and **`go run ./scripts/benchharness`** parity for each expected row.
+**Read-path checks:** **`GET .../run/status`** (**`adhoc`**, **`findings_recording_status` `complete`**; scan B asserts **`rule_family_coverage.rate_limit_header_rotation.exercised`**), endpoint detail, finding detail (**`evidence_summary.assessment_notes`** and **`interpretation_hints`** parity with **`summary`** for tentatives; both empty for confirmed mass/rate rows), execution detail, plus harness **`bench_*`** lines and **`go run ./scripts/benchharness`** parity for each expected row. **`read_trust_legend`** on finding detail and **`operator_guide`** on execution detail are asserted via **`scripts/read_trust_assert.sh`** (sourced from **`scripts/benchmark_findings_local.sh`** and **`scripts/e2e_local.sh`**) so local Docker flows prove the same non-empty string keys as **`read_contract_test`** (without duplicating jq in two places).
+
+**What local flows do not prove:** that the *wording* inside legend/guide strings matches a golden file—only that the JSON shape and non-empty gloss fields are present end-to-end.
 
 **What it does not prove:** Production CDN rate-limit behavior, multi-operation OpenAPI `servers` mixing, or coverage beyond these two local targets. The nginx map is **test-only**; it is not a general rate-limit emulator.
 

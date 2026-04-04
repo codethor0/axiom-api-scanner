@@ -103,6 +103,34 @@ func TestNewFindingRead_fillsExecutionIDsFromEvidenceSummary(t *testing.T) {
 	}
 }
 
+func TestFindingRead_readTrustLegendWireKeysMatchProofScripts(t *testing.T) {
+	f := findings.Finding{
+		ID: "550e8400-e29b-41d4-a716-446655440000", ScanID: "660e8400-e29b-41d4-a716-446655440001",
+		RuleID: "r", Category: "c", Severity: findings.SeverityLow, Summary: "s", EvidenceURI: "/e",
+	}
+	raw, err := json.Marshal(NewFindingRead(f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		t.Fatal(err)
+	}
+	legendRaw, ok := top["read_trust_legend"]
+	if !ok {
+		t.Fatal("missing read_trust_legend")
+	}
+	var legend map[string]string
+	if err := json.Unmarshal(legendRaw, &legend); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"severity", "rule_declared_confidence", "assessment_tier", "evidence_summary", "evidence_inspection", "operator_assessment"} {
+		if legend[k] == "" {
+			t.Fatalf("empty legend key %q", k)
+		}
+	}
+}
+
 func TestNewFindingRead_readTrustLegendStable(t *testing.T) {
 	f := findings.Finding{
 		ID:          "fid",

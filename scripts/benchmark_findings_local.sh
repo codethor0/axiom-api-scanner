@@ -9,6 +9,8 @@ cd "$ROOT"
 
 # shellcheck source=local_stack_preflight.sh
 source "$ROOT/scripts/local_stack_preflight.sh"
+# shellcheck source=read_trust_assert.sh
+source "$ROOT/scripts/read_trust_assert.sh"
 
 COMPOSE_FILE="$ROOT/deploy/e2e/docker-compose.yml"
 export COMPOSE_FILE
@@ -281,13 +283,16 @@ echo "$EP_DETAIL" | jq -e '.investigation != null' >/dev/null
 F0="$(echo "$FINDINGS" | jq '.items[0]')"
 FID="$(echo "$F0" | jq -er .id)"
 FGET="$(curl -sf "$AXIOM_URL/v1/findings/$FID")"
+assert_read_trust_legend_shape "$FGET"
 MEXEC="$(echo "$FGET" | jq -er '.mutated_execution_id // .evidence_summary.mutated_execution_id // empty')"
 if [[ -z "$MEXEC" ]]; then
   echo "benchmark failed: could not resolve mutated_execution_id from finding detail" >&2
   echo "$FGET" | jq . >&2
   exit 1
 fi
-curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions/$MEXEC" | jq -e '.phase == "mutated"' >/dev/null
+MEXEC_JSON="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions/$MEXEC")"
+echo "$MEXEC_JSON" | jq -e '.phase == "mutated"' >/dev/null
+assert_operator_guide_shape "$MEXEC_JSON"
 
 # Scan B: nginx stub exposes differential X-RateLimit-Remaining for header-rotation mutations.
 # The same GET endpoint is also eligible for path normalization (double-slash variant still matches nginx and passes weak similarity) -> tentative pathnorm + confirmed rate-limit (two findings).
@@ -349,6 +354,7 @@ FID_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_R
 assert_bench_harness_row "$BENCH_TARGET_STUB" "$FID_RL" "$BENCH_CODES_STUB_RATE_CONFIRMED"
 assert_confirmed_evidence_no_interpretation_hints "$FID_RL"
 RL_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_RL")"
+assert_read_trust_legend_shape "$RL_DETAIL"
 echo "$RL_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
 FID_PATHSTUB="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')"
 assert_bench_harness_row "$BENCH_TARGET_STUB" "$FID_PATHSTUB" "$BENCH_CODES_STUB_PATHNORM_TENTATIVE"
@@ -356,7 +362,9 @@ assert_tentative_evidence_notes "$FID_PATHSTUB"
 EP_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_RATELIMIT"'") | .scan_endpoint_id')"
 curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/endpoints/$EP_RL" | jq -e '.drilldown.findings_list_path | startswith("/v1/")' >/dev/null
 RL_EXEC="$(echo "$RL_DETAIL" | jq -er '.mutated_execution_id')"
-curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions/$RL_EXEC" | jq -e '.phase == "mutated"' >/dev/null
+RL_EXEC_JSON="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions/$RL_EXEC")"
+echo "$RL_EXEC_JSON" | jq -e '.phase == "mutated"' >/dev/null
+assert_operator_guide_shape "$RL_EXEC_JSON"
 
 echo "    bench_harness scan=B pathnorm_fixture_artifact codes=${BENCH_CODES_STUB_PATHNORM_TENTATIVE}"
 

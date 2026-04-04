@@ -8,6 +8,8 @@ cd "$ROOT"
 
 # shellcheck source=local_stack_preflight.sh
 source "$ROOT/scripts/local_stack_preflight.sh"
+# shellcheck source=read_trust_assert.sh
+source "$ROOT/scripts/read_trust_assert.sh"
 
 COMPOSE_FILE="$ROOT/deploy/e2e/docker-compose.yml"
 export COMPOSE_FILE
@@ -124,6 +126,7 @@ echo "$EX_DETAIL" | jq -e '
   (.request_summary.method == .request.method) and
   (.response_summary.status_code >= 100)
 ' >/dev/null
+assert_operator_guide_shape "$EX_DETAIL"
 
 echo "==> E2E: run status (ad-hoc baseline/mutation scan)"
 RUN_STATUS_JSON="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/run/status")"
@@ -169,6 +172,7 @@ if [[ "$FIRST_LEN" -ge 1 ]]; then
     (.rule_declared_confidence != null) and
     (.evidence_inspection != null)
   ' >/dev/null
+  assert_read_trust_legend_shape "$FDETAIL"
   curl -sf "$AXIOM_URL/v1/findings/$FID/evidence" | jq -e .finding_id >/dev/null
   SE_ID="$(echo "$FINDINGS_JSON" | jq -r '.items[0].scan_endpoint_id // empty')"
   if [[ -n "$SE_ID" ]]; then
