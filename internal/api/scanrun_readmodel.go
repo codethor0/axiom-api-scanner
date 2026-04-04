@@ -271,7 +271,7 @@ func scanRuleFamilyCoverageRulesLoadFailed(err error) ScanRunRuleFamilyCoverage 
 }
 
 func buildScanRunGuidance(scan engine.Scan, endpointsN, secEndpoints int, authConfigured bool) ScanRunGuidance {
-	var steps []ScanRunDiagnosticLine
+	steps := make([]ScanRunDiagnosticLine, 0, 6)
 	if endpointsN == 0 {
 		steps = append(steps, ScanRunDiagnosticLine{
 			Code:   "import_openapi_first",

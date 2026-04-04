@@ -79,6 +79,16 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var mutated []engine.ExecutionRecord
+	if h.Executions != nil {
+		var exErr error
+		mutated, exErr = h.Executions.ListExecutions(r.Context(), id, storage.ExecutionListFilter{Phase: string(engine.PhaseMutated)})
+		if exErr != nil {
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions")
+			return
+		}
+	}
+
 	var fam ScanRunRuleFamilyCoverage
 	switch {
 	case h.Executions == nil:
@@ -90,14 +100,12 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		if lerr != nil {
 			fam = scanRuleFamilyCoverageRulesLoadFailed(lerr)
 		} else {
-			mutated, exErr := h.Executions.ListExecutions(r.Context(), id, storage.ExecutionListFilter{Phase: string(engine.PhaseMutated)})
-			if exErr != nil {
-				writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions for rule family coverage")
-				return
-			}
 			fam = buildScanRunRuleFamilyCoverage(scan, rulesList, mutated)
 		}
 	}
+
+	diagnostics := buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured)
+	diagnostics.ConsistencyDetail = scanRunConsistencyLines(scan, findingsSummary, h.Findings != nil, mutated, fam)
 
 	out := ScanRunStatusResponse{
 		Scan: ScanRunScanSummary{
@@ -120,7 +128,7 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		RuleFamilyCoverage: fam,
 		Guidance:           buildScanRunGuidance(scan, nEp, secEndpoints, authConfigured),
 		Coverage:           cov,
-		Diagnostics:        buildScanRunDiagnostics(scan, nEp, secEndpoints, authConfigured),
+		Diagnostics:        diagnostics,
 		Compatibility: ScanRunCompatibility{
 			ScanID:     scan.ID,
 			Phase:      string(scan.RunPhase),
@@ -155,7 +163,10 @@ func subMutationErrorOnly(scan engine.Scan) string {
 }
 
 func buildScanRunDiagnostics(scan engine.Scan, endpointsN, secEndpoints int, authConfigured bool) ScanRunDiagnostics {
-	var d ScanRunDiagnostics
+	d := ScanRunDiagnostics{
+		BlockedDetail: make([]ScanRunDiagnosticLine, 0, 2),
+		SkippedDetail: make([]ScanRunDiagnosticLine, 0, 2),
+	}
 	if endpointsN == 0 {
 		d.BlockedDetail = append(d.BlockedDetail, ScanRunDiagnosticLine{
 			Code:   "no_imported_endpoints",

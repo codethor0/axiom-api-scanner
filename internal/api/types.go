@@ -66,9 +66,11 @@ type ScanRunDiagnosticLine struct {
 }
 
 // ScanRunDiagnostics lists narrow, factual skip/block hints derived only from persisted scan columns and endpoint inventory.
+// BlockedDetail, SkippedDetail, and ConsistencyDetail are always JSON arrays (possibly empty) on GET/POST .../run/status for a stable wire shape.
 type ScanRunDiagnostics struct {
-	BlockedDetail       []ScanRunDiagnosticLine `json:"blocked_detail,omitempty"`
-	SkippedDetail       []ScanRunDiagnosticLine `json:"skipped_detail,omitempty"`
+	BlockedDetail       []ScanRunDiagnosticLine `json:"blocked_detail"`
+	SkippedDetail       []ScanRunDiagnosticLine `json:"skipped_detail"`
+	ConsistencyDetail   []ScanRunDiagnosticLine `json:"consistency_detail"`
 	PhaseFailedNextStep string                  `json:"phase_failed_next_step,omitempty"`
 	ResumeRecommended   bool                    `json:"resume_recommended,omitempty"`
 }
@@ -131,13 +133,16 @@ type ScanRunRuleFamilyCoverage struct {
 	RateLimitHeaders  ScanRunFamilyCoverageEntry `json:"rate_limit_header_rotation"`
 }
 
-// ScanRunGuidance lists short, actionable next steps grounded in the same state as diagnostics (deterministic order).
+// ScanRunGuidance lists short, actionable next steps (distinct from diagnostics: guidance is action-oriented; diagnostics are state/facts).
+// NextSteps is always a JSON array (possibly empty) on GET/POST .../run/status.
 type ScanRunGuidance struct {
-	NextSteps []ScanRunDiagnosticLine `json:"next_steps,omitempty"`
+	NextSteps []ScanRunDiagnosticLine `json:"next_steps"`
 }
 
-// ScanRunStatusResponse canonical JSON shape for GET/POST .../run/status responses.
-// Canonical groups: scan, run, progress, summary, findings_summary, rule_family_coverage, guidance, coverage, diagnostics. compatibility is the only non-canonical group (explicit mirror).
+// ScanRunStatusResponse is the wire contract for GET /v1/scans/{scanID}/run/status and successful POST .../run.
+//
+// Canonical (intended for all new clients), in wire order: scan, run, progress, summary, findings_summary, rule_family_coverage, guidance, coverage, diagnostics.
+// compatibility is the only legacy mirror; fields there duplicate subset of scan/run for older integrations (see docs/api.md).
 type ScanRunStatusResponse struct {
 	Scan               ScanRunScanSummary        `json:"scan"`
 	Run                ScanRunState              `json:"run"`
