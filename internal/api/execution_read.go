@@ -10,7 +10,23 @@ import (
 
 const executionURLShortMax = 120
 
-// ExecutionRead is the operator-oriented JSON shape for a stored HTTP exchange.
+// ExecutionListItem is the list projection for GET .../executions: phase, rule linkage, summaries, and timing only
+// (no request/response body or header maps). GET .../executions/{id} returns the full ExecutionRead.
+type ExecutionListItem struct {
+	ID              string `json:"id"`
+	ScanID          string `json:"scan_id"`
+	ScanEndpointID  string `json:"scan_endpoint_id,omitempty"`
+	Phase           string `json:"phase"`
+	ExecutionKind   string `json:"execution_kind"`
+	MutationRuleID  string `json:"mutation_rule_id,omitempty"`
+	CandidateKey    string `json:"candidate_key,omitempty"`
+	RequestSummary  ExecutionRequestSummary  `json:"request_summary"`
+	ResponseSummary ExecutionResponseSummary `json:"response_summary"`
+	DurationMs      int64                    `json:"duration_ms"`
+	CreatedAt       time.Time                `json:"created_at"`
+}
+
+// ExecutionRead is the operator-oriented JSON shape for a stored HTTP exchange (detail and runner payloads).
 type ExecutionRead struct {
 	ID             string `json:"id"`
 	ScanID         string `json:"scan_id"`
@@ -82,6 +98,34 @@ func shortenExecutionURL(raw string, max int) string {
 		raw = s
 	}
 	return raw[:max-3] + "..."
+}
+
+// NewExecutionListItem maps a domain execution record into the list projection (summaries only).
+func NewExecutionListItem(r engine.ExecutionRecord) ExecutionListItem {
+	phase := string(r.Phase)
+	return ExecutionListItem{
+		ID:             r.ID,
+		ScanID:         r.ScanID,
+		ScanEndpointID: r.ScanEndpointID,
+		Phase:          phase,
+		ExecutionKind:  phase,
+		MutationRuleID: r.RuleID,
+		CandidateKey:   r.CandidateKey,
+		RequestSummary: ExecutionRequestSummary{
+			Method:         r.RequestMethod,
+			URLShort:       shortenExecutionURL(r.RequestURL, executionURLShortMax),
+			HeaderCount:    len(r.RequestHeaders),
+			BodyByteLength: len(r.RequestBody),
+		},
+		ResponseSummary: ExecutionResponseSummary{
+			StatusCode:     r.ResponseStatus,
+			ContentType:    r.ResponseContentType,
+			HeaderCount:    len(r.ResponseHeaders),
+			BodyByteLength: len(r.ResponseBody),
+		},
+		DurationMs: r.DurationMs,
+		CreatedAt:  r.CreatedAt,
+	}
 }
 
 // NewExecutionRead maps a domain execution record into the stable API projection.

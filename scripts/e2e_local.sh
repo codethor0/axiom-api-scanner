@@ -103,17 +103,17 @@ MUT_JSON="$(curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/mutations"
 echo "$MUT_JSON" | jq -e '.result.status == "succeeded"' >/dev/null
 
 echo "==> E2E: executions list"
-EXEC_N="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions" | jq 'length')"
+EXEC_N="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions" | jq '.items | length')"
 [[ "$EXEC_N" -ge 1 ]]
 
 echo "==> E2E: findings list"
 FINDINGS_JSON="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings")"
-echo "$FINDINGS_JSON" | jq -e 'type == "array"' >/dev/null
+echo "$FINDINGS_JSON" | jq -e '(.items | type == "array") and (.meta | type == "object")' >/dev/null
 # May be zero or more depending on rules + matcher outcomes; require we can read the model
-FIRST_LEN="$(echo "$FINDINGS_JSON" | jq 'length')"
+FIRST_LEN="$(echo "$FINDINGS_JSON" | jq '.items | length')"
 
 if [[ "$FIRST_LEN" -ge 1 ]]; then
-  FID="$(echo "$FINDINGS_JSON" | jq -er '.[0].id')"
+  FID="$(echo "$FINDINGS_JSON" | jq -er '.items[0].id')"
   echo "==> E2E: finding detail + evidence ($FID)"
   curl -sf "$AXIOM_URL/v1/findings/$FID" | jq -e .id >/dev/null
   curl -sf "$AXIOM_URL/v1/findings/$FID/evidence" | jq -e .finding_id >/dev/null

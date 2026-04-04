@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -51,6 +52,22 @@ func TestNewFindingRead_evidenceInspection(t *testing.T) {
 	}
 	if r.EvidenceInspection.MatcherOutcomes[1].Passed {
 		t.Fatal("m1 should be false")
+	}
+
+	li := NewFindingListItem(f)
+	liBytes, merr := json.Marshal(li)
+	if merr != nil {
+		t.Fatal(merr)
+	}
+	var liKeys map[string]json.RawMessage
+	if err := json.Unmarshal(liBytes, &liKeys); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := liKeys["evidence_summary"]; ok {
+		t.Fatalf("list item must not include evidence_summary: %s", liBytes)
+	}
+	if string(liKeys["rule_id"]) != `"r1"` || li.EvidenceInspection == nil {
+		t.Fatalf("%+v", li)
 	}
 }
 

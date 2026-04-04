@@ -110,10 +110,10 @@ curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/baseline" | jq -e '.re
 echo "==> mutations"
 curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_ID/executions/mutations" | jq -e '.result.status == "succeeded"' >/dev/null
 
-N_FIND="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings" | jq 'length')"
+N_FIND="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings" | jq '.items | length')"
 [[ "$N_FIND" -ge 1 ]]
 
-FID="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings" | jq -er '.[0].id')"
+FID="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/findings" | jq -er '.items[0].id')"
 curl -sf "$AXIOM_URL/v1/findings/$FID" | jq -e .id >/dev/null
 curl -sf "$AXIOM_URL/v1/findings/$FID/evidence" | jq -e .finding_id >/dev/null
 
@@ -189,7 +189,7 @@ if [[ "${OK_POST:-0}" -lt 1 ]]; then
   exit 1
 fi
 
-N_AUTH_FIND="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_AUTH/findings" | jq 'length')"
+N_AUTH_FIND="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_AUTH/findings" | jq '.items | length')"
 [[ "$N_AUTH_FIND" -ge 1 ]]
 
 echo "OK: crAPI authenticated e2e passed (findings=$N_AUTH_FIND, scan_auth=$SCAN_AUTH, email=$EMAIL)"

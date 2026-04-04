@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
@@ -392,24 +391,10 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
 		return
 	}
-	phase := strings.TrimSpace(r.URL.Query().Get("phase"))
-	ek := strings.TrimSpace(r.URL.Query().Get("execution_kind"))
-	if phase != "" && ek != "" && phase != ek {
-		writeAPIError(w, http.StatusBadRequest, "invalid_filter", "phase and execution_kind must match when both are set")
+	filter, ferr := parseExecutionListFilters(r)
+	if ferr != nil {
+		writeAPIError(w, http.StatusBadRequest, ferr.code, ferr.message)
 		return
-	}
-	if phase == "" {
-		phase = ek
-	}
-	filter := storage.ExecutionListFilter{
-		Phase:          phase,
-		ScanEndpointID: strings.TrimSpace(r.URL.Query().Get("scan_endpoint_id")),
-		RuleID:         strings.TrimSpace(r.URL.Query().Get("rule_id")),
-	}
-	if rs := strings.TrimSpace(r.URL.Query().Get("response_status")); rs != "" {
-		if code, perr := strconv.Atoi(rs); perr == nil && code > 0 {
-			filter.ResponseStatus = code
-		}
 	}
 	pageOpts, perr := parseExecutionListPageParams(r)
 	if perr != nil {
@@ -425,9 +410,9 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list executions")
 		return
 	}
-	items := make([]ExecutionRead, len(page.Records))
+	items := make([]ExecutionListItem, len(page.Records))
 	for i := range page.Records {
-		items[i] = NewExecutionRead(page.Records[i])
+		items[i] = NewExecutionListItem(page.Records[i])
 	}
 	writeJSON(w, http.StatusOK, ExecutionListResponse{
 		Items: items,
@@ -544,11 +529,10 @@ func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
 		return
 	}
-	filter := storage.FindingListFilter{
-		AssessmentTier:         strings.TrimSpace(r.URL.Query().Get("assessment_tier")),
-		Severity:               strings.TrimSpace(r.URL.Query().Get("severity")),
-		RuleDeclaredConfidence: strings.TrimSpace(r.URL.Query().Get("rule_declared_confidence")),
-		RuleID:                 strings.TrimSpace(r.URL.Query().Get("rule_id")),
+	filter, ferr := parseFindingListFilters(r)
+	if ferr != nil {
+		writeAPIError(w, http.StatusBadRequest, ferr.code, ferr.message)
+		return
 	}
 	pageOpts, perr := parseFindingListPageParams(r)
 	if perr != nil {
@@ -564,9 +548,9 @@ func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list findings")
 		return
 	}
-	out := make([]FindingRead, len(page.Records))
+	out := make([]FindingListItem, len(page.Records))
 	for i := range page.Records {
-		out[i] = NewFindingRead(page.Records[i])
+		out[i] = NewFindingListItem(page.Records[i])
 	}
 	writeJSON(w, http.StatusOK, FindingListResponse{
 		Items: out,

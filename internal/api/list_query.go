@@ -5,7 +5,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/codethor0/axiom-api-scanner/internal/findings"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
+	"github.com/google/uuid"
 )
 
 type parsedEndpointListParams struct {
@@ -81,6 +83,77 @@ func parseEndpointListPageParams(r *http.Request) (storage.EndpointListPageOptio
 		opts.Limit = n
 	}
 	return opts, nil
+}
+
+// parseFindingListFilters validates optional exact-match filters for the findings list.
+func parseFindingListFilters(r *http.Request) (storage.FindingListFilter, *apiRequestError) {
+	q := r.URL.Query()
+	f := storage.FindingListFilter{
+		AssessmentTier:         strings.TrimSpace(q.Get("assessment_tier")),
+		Severity:               strings.TrimSpace(q.Get("severity")),
+		RuleDeclaredConfidence: strings.TrimSpace(q.Get("rule_declared_confidence")),
+		RuleID:                 strings.TrimSpace(q.Get("rule_id")),
+	}
+	if f.AssessmentTier != "" {
+		switch f.AssessmentTier {
+		case "confirmed", "tentative", "incomplete":
+		default:
+			return storage.FindingListFilter{}, &apiRequestError{code: "invalid_filter", message: "assessment_tier must be confirmed, tentative, or incomplete"}
+		}
+	}
+	if f.Severity != "" {
+		switch findings.Severity(f.Severity) {
+		case findings.SeverityInfo, findings.SeverityLow, findings.SeverityMedium, findings.SeverityHigh, findings.SeverityCritical:
+		default:
+			return storage.FindingListFilter{}, &apiRequestError{code: "invalid_filter", message: "severity must be info, low, medium, high, or critical"}
+		}
+	}
+	if f.RuleDeclaredConfidence != "" {
+		switch f.RuleDeclaredConfidence {
+		case "high", "medium", "low":
+		default:
+			return storage.FindingListFilter{}, &apiRequestError{code: "invalid_filter", message: "rule_declared_confidence must be high, medium, or low"}
+		}
+	}
+	return f, nil
+}
+
+// parseExecutionListFilters validates list filters including phase, UUIDs, and response_status.
+func parseExecutionListFilters(r *http.Request) (storage.ExecutionListFilter, *apiRequestError) {
+	q := r.URL.Query()
+	phase := strings.TrimSpace(q.Get("phase"))
+	ek := strings.TrimSpace(q.Get("execution_kind"))
+	if phase != "" && ek != "" && phase != ek {
+		return storage.ExecutionListFilter{}, &apiRequestError{code: "invalid_filter", message: "phase and execution_kind must match when both are set"}
+	}
+	if phase == "" {
+		phase = ek
+	}
+	if phase != "" && phase != "baseline" && phase != "mutated" {
+		return storage.ExecutionListFilter{}, &apiRequestError{code: "invalid_filter", message: "phase must be baseline or mutated"}
+	}
+	filter := storage.ExecutionListFilter{
+		Phase:          phase,
+		ScanEndpointID: strings.TrimSpace(q.Get("scan_endpoint_id")),
+		RuleID:         strings.TrimSpace(q.Get("rule_id")),
+	}
+	if filter.ScanEndpointID != "" {
+		if _, err := uuid.Parse(filter.ScanEndpointID); err != nil {
+			return storage.ExecutionListFilter{}, &apiRequestError{code: "invalid_filter", message: "scan_endpoint_id must be a UUID"}
+		}
+	}
+	if _, present := q["response_status"]; present {
+		rs := strings.TrimSpace(q.Get("response_status"))
+		if rs == "" {
+			return storage.ExecutionListFilter{}, &apiRequestError{code: "invalid_filter", message: "response_status must be an integer between 100 and 599"}
+		}
+		code, err := strconv.Atoi(rs)
+		if err != nil || code < 100 || code > 599 {
+			return storage.ExecutionListFilter{}, &apiRequestError{code: "invalid_filter", message: "response_status must be an integer between 100 and 599"}
+		}
+		filter.ResponseStatus = code
+	}
+	return filter, nil
 }
 
 func parseExecutionListPageParams(r *http.Request) (storage.ExecutionListPageOptions, *apiRequestError) {

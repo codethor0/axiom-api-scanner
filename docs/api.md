@@ -208,9 +208,9 @@ If baseline is missing or not `succeeded`, `result.status` is `failed` with `bas
 
 ### GET /v1/scans/{scanID}/executions
 
-Lists stored HTTP exchanges for the scan. **Response shape (breaking vs historical raw-array clients):** JSON object with **`items`** (array of **execution read** objects) and **`meta`** (pagination).
+Lists stored HTTP exchanges for the scan. **Response shape:** JSON object with **`items`** (array of **execution list** rows) and **`meta`** (pagination). **`GET .../executions/{executionID}`** returns the full **execution read** (includes redacted `request` / `response` bodies and header maps); list rows intentionally omit those objects so operators can page large runs without shipping duplicate body payload.
 
-**Execution read** fields:
+**Execution list row** fields:
 
 | Field | Meaning |
 | --- | --- |
@@ -219,9 +219,8 @@ Lists stored HTTP exchanges for the scan. **Response shape (breaking vs historic
 | `execution_kind` | Same value as `phase`; use either for filtering mentally; both are always set together. |
 | `mutation_rule_id` | Rule id for mutated rows (empty for baseline). |
 | `candidate_key` | Mutation work-item key for **mutated** rows only (resume/dedup); empty for baseline. |
-| `request`, `response` | Full redacted snapshots (`request.url`, `request.body`, header maps, `response.status_code`, `response.body`, etc.). |
-| `request_summary` | Concise view: `method`, `url_short` (length-capped from stored URL), `header_count`, `body_byte_length` (same redacted body as `request.body`). |
-| `response_summary` | Concise view: `status_code`, `content_type`, `header_count`, `body_byte_length` (same body as `response.body`). |
+| `request_summary` | Concise view: `method`, `url_short` (length-capped from stored URL), `header_count`, `body_byte_length` (derived from the **same** redacted persisted fields as detail `request`). |
+| `response_summary` | Concise view: `status_code`, `content_type`, `header_count`, `body_byte_length` (aligned with detail `response`). |
 
 **Pagination (keyset cursor):** `meta.limit` echoes the applied page size (default **50**, maximum **200**). `meta.has_more` is true when more rows exist. `meta.next_cursor` is an opaque string: pass it as **`cursor`** on the next request (with the **same** `sort`, `order`, and narrow filters) to continue. Ordering is deterministic: primary sort key, then `created_at`, then row `id`. Cursors are validated against `sort` and `order`; a mismatched cursor returns `400` `invalid_cursor`.
 
@@ -231,17 +230,17 @@ Lists stored HTTP exchanges for the scan. **Response shape (breaking vs historic
 
 **Not supported:** `offset` (returns `400` `unsupported_query_parameter`); use `cursor` only.
 
-Filters (unchanged, combined with AND): `phase`, `execution_kind` (alias; must match `phase` if both set, else `400` `invalid_filter`), `scan_endpoint_id`, `rule_id`, `response_status`.
+**Filters** (combined with AND): `phase`, `execution_kind` (alias; must match `phase` if both set, else `400` `invalid_filter`), `scan_endpoint_id` (**must be a UUID** when set), `rule_id`, `response_status` (**integer 100–599**; if the query key is present, the value must be valid, else `400` `invalid_filter`). `phase` / `execution_kind`, when set, must be exactly `baseline` or `mutated` (`400` `invalid_filter` otherwise).
 
 ### GET /v1/scans/{scanID}/executions/{executionID}
 
-Returns one execution read object (same shape as **`items[]`** elements) when it belongs to the scan. `404` when missing or mismatched.
+Returns one **execution read** object (full redacted `request` / `response` plus summaries) when it belongs to the scan. `404` when missing or mismatched. This shape is **not** the same as **`items[]`** from the list route (list rows are lighter).
 
 ### GET /v1/scans/{scanID}/findings
 
-Lists findings for the scan. **Response shape:** object with **`items`** (**finding read** array) and **`meta`** (same pagination fields as executions).
+Lists findings for the scan. **Response shape:** object with **`items`** (**finding list** rows) and **`meta`** (same pagination fields as executions).
 
-Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each **finding read** includes all stored columns (`id`, `scan_id`, `rule_id`, `category`, `severity`, `rule_declared_confidence`, `assessment_tier`, `summary`, `evidence_summary`, `evidence_uri`, `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, `created_at`) plus optional **`evidence_inspection`** when there is something to show (see `GET /v1/findings/{findingID}`).
+Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each **finding list** row is optimized for triage: **`rule_id`**, **`severity`**, **`rule_declared_confidence`**, **`assessment_tier`** appear early in the JSON; then **`scan_id`**, **`category`**, endpoint and execution linkage, **`evidence_uri`**, **`summary`**, optional **`evidence_inspection`** (matcher pass/fail lines and diff point count), and **`created_at`**. The list does **not** include raw **`evidence_summary`** JSON (use **`GET /v1/findings/{findingID}`** for the full read model including that blob).
 
 **Pagination:** Same cursor model as executions (`limit` default 50, max 200; `cursor` + `meta.next_cursor`). Deterministic tie-break: after primary sort, `created_at`, then `id`.
 
@@ -253,13 +252,15 @@ Rows are produced only after a mutation pass when matchers pass with complete di
 
 **Non-overlapping semantics:** `severity` is impact; `assessment_tier` is post-run confidence in the signal; `rule_declared_confidence` is YAML authoring quality.
 
-Optional **filter** query parameters (all exact match, ANDed with pagination): `assessment_tier`, `severity`, `rule_declared_confidence`, `rule_id`.
+Optional **filter** query parameters (all exact match, ANDed with pagination): `assessment_tier` (**`confirmed`**, **`tentative`**, or **`incomplete`**), **`severity`** (**`info`**, **`low`**, **`medium`**, **`high`**, **`critical`**), **`rule_declared_confidence`** (**`high`**, **`medium`**, **`low`**), **`rule_id`**. Invalid enum-like values return `400` `invalid_filter` (unknown strings are not silently ignored).
+
+**List vs detail:** **`GET /v1/findings/{findingID}`** returns **`FindingRead`**: all persisted columns including optional **`evidence_summary`** plus **`evidence_inspection`**.
 
 ## Findings
 
 ### GET /v1/findings/{findingID}
 
-Returns one **finding read** object (same JSON shape as list elements), including `evidence_inspection` when applicable.
+Returns one **finding read** object (full columns including **`evidence_summary`** when stored), with **`evidence_inspection`** when applicable. This shape is **richer** than **`items[]`** from **`GET .../scans/{id}/findings`**.
 
 Rule load failures (`GET /v1/rules`) return `rule_load_failed` with a **numbered, multi-line** validation message when YAML fails validation.
 

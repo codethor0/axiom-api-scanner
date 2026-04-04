@@ -283,12 +283,12 @@ type ListPageMeta struct {
 
 // ExecutionListResponse is the wire envelope for GET /v1/scans/{scanID}/executions.
 type ExecutionListResponse struct {
-	Items []ExecutionRead `json:"items"`
-	Meta  ListPageMeta    `json:"meta"`
+	Items []ExecutionListItem `json:"items"`
+	Meta  ListPageMeta        `json:"meta"`
 }
 
 // FindingListResponse is the wire envelope for GET /v1/scans/{scanID}/findings.
 type FindingListResponse struct {
-	Items []FindingRead `json:"items"`
-	Meta  ListPageMeta  `json:"meta"`
+	Items []FindingListItem `json:"items"`
+	Meta  ListPageMeta      `json:"meta"`
 }

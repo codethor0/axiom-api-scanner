@@ -758,7 +758,7 @@ func testHandler(mem *memRepositories) *Handler {
 	}
 }
 
-func TestListExecutions_returnsExecutionReadEnvelope(t *testing.T) {
+func TestListExecutions_returnsExecutionListEnvelope(t *testing.T) {
 	mem := newMemRepositories()
 	srv := httptest.NewServer(testHandler(mem).Routes())
 	t.Cleanup(srv.Close)

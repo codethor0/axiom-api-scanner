@@ -20,6 +20,13 @@ var executionReadRequired = []string{
 	"duration_ms", "created_at",
 }
 
+// executionListItemRequired is GET .../executions items[] (summaries only; no request/response bodies).
+var executionListItemRequired = []string{
+	"id", "scan_id", "phase", "execution_kind",
+	"request_summary", "response_summary",
+	"duration_ms", "created_at",
+}
+
 var executionSnapRequestKeys = []string{"method", "url"}
 var executionSnapResponseKeys = []string{"status_code"}
 var executionReqSummaryKeys = []string{"method", "url_short", "header_count", "body_byte_length"}
@@ -282,7 +289,15 @@ func TestContract_executionList_wireKeys(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected 1 row, got %d", len(items))
 	}
-	assertJSONKeys(t, items[0], executionReadRequired)
+	assertJSONKeys(t, items[0], executionListItemRequired)
+	var itemObj map[string]json.RawMessage
+	_ = json.Unmarshal(items[0], &itemObj)
+	if _, ok := itemObj["request"]; ok {
+		t.Fatal("execution list items must not include request body")
+	}
+	if _, ok := itemObj["response"]; ok {
+		t.Fatal("execution list items must not include response body")
+	}
 	var meta map[string]json.RawMessage
 	if err := json.Unmarshal(env["meta"], &meta); err != nil {
 		t.Fatal(err)

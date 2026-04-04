@@ -59,3 +59,25 @@ func TestNewExecutionRead_summariesAndKind(t *testing.T) {
 		t.Fatalf("content type %+v", r.ResponseSummary)
 	}
 }
+
+func TestNewExecutionListItem_matchesSummariesWithoutBodies(t *testing.T) {
+	t.Parallel()
+	rec := engine.ExecutionRecord{
+		ID:             "e1",
+		ScanID:         "s1",
+		ScanEndpointID: "ep1",
+		Phase:          engine.PhaseBaseline,
+		RequestMethod:  "POST",
+		RequestURL:     "https://api.example/v1/x",
+		RequestBody:    "sensitive",
+		ResponseStatus: 201,
+		ResponseBody:   "created",
+	}
+	li := NewExecutionListItem(rec)
+	if li.RequestSummary.BodyByteLength != len(rec.RequestBody) || li.ResponseSummary.BodyByteLength != len(rec.ResponseBody) {
+		t.Fatalf("summary byte lengths %+v / %+v", li.RequestSummary, li.ResponseSummary)
+	}
+	if li.Phase != "baseline" || li.ExecutionKind != "baseline" {
+		t.Fatalf("%+v", li)
+	}
+}
