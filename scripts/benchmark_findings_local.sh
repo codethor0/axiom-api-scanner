@@ -80,10 +80,54 @@ if [[ -z "$H_BASE" || -z "$H_ROT" || "$H_BASE" == "$H_ROT" ]]; then
   exit 1
 fi
 
+RULE_IDOR="axiom.idor.path_swap.v1"
+RULE_MASS="axiom.mass.privilege_merge.v1"
+RULE_PATHNORM="axiom.pathnorm.variant.v1"
+RULE_RATELIMIT="axiom.ratelimit.header_rotate.v1"
+
+BENCH_TARGET_HTTPBIN="bench-httpbin-v1-families"
+BENCH_TARGET_STUB="bench-rate-stub"
+# Kept in sync with internal/findings/benchmark_harness_test.go
+BENCH_CODES_HTTPBIN_TENTATIVE="bench_target_httpbin_v1,bench_scanner_tentative_weak_similarity_policy,bench_fixture_layout_httpbin_openapi_operations"
+BENCH_CODES_HTTPBIN_MASS_CONFIRMED="bench_target_httpbin_v1,bench_scanner_confirmed_useful_signal,bench_fixture_context_httpbin_post_mass_assignment"
+BENCH_CODES_STUB_PATHNORM_TENTATIVE="bench_target_rate_stub,bench_scanner_tentative_weak_similarity_policy,bench_fixture_artifact_pathnorm_on_single_stub_route"
+BENCH_CODES_STUB_RATE_CONFIRMED="bench_target_rate_stub,bench_scanner_confirmed_useful_signal,bench_fixture_context_rate_stub_header_differential"
+BENCH_CODES_HTTPBIN_RATE_NO_ROW="bench_target_httpbin_v1,bench_no_finding_absent_row,bench_fixture_limit_httpbin_rate_header_matcher_unsatisfied"
+
+bench_harness_codes_row() {
+  local target="$1" fid="$2"
+  local detail rule tier notes
+  detail="$(curl -sf "$AXIOM_URL/v1/findings/$fid")"
+  rule="$(echo "$detail" | jq -er .rule_id)"
+  tier="$(echo "$detail" | jq -er .assessment_tier)"
+  notes="$(echo "$detail" | jq -r '(.evidence_summary.assessment_notes // []) | join(",")')"
+  ( cd "$ROOT" && go run ./scripts/benchharness -target "$target" -rule "$rule" -tier "$tier" -notes "$notes" )
+}
+
+assert_bench_harness_row() {
+  local target="$1" fid="$2" want="$3"
+  local got
+  got="$(bench_harness_codes_row "$target" "$fid")"
+  if [[ "$got" != "$want" ]]; then
+    echo "benchmark failed: bench harness codes mismatch for finding $fid (want=$want got=$got)" >&2
+    exit 1
+  fi
+}
+
+assert_bench_harness_no_finding() {
+  local target="$1" rule="$2" want="$3"
+  local got
+  got="$( ( cd "$ROOT" && go run ./scripts/benchharness -no-finding -target "$target" -rule "$rule" ) )"
+  if [[ "$got" != "$want" ]]; then
+    echo "benchmark failed: bench harness no-finding codes want=$want got=$got" >&2
+    exit 1
+  fi
+}
+
 SCAN_ID="$(
   curl -sf -X POST "$AXIOM_URL/v1/scans" \
     -H 'Content-Type: application/json' \
-    -d '{"target_label":"bench-httpbin-v1-families","safety_mode":"safe","allow_full_execution":false,"base_url":"'"$HTTPBIN_URL"'"}' |
+    -d '{"target_label":"'"$BENCH_TARGET_HTTPBIN"'","safety_mode":"safe","allow_full_execution":false,"base_url":"'"$HTTPBIN_URL"'"}' |
     jq -er .id
 )"
 
@@ -108,11 +152,6 @@ fi
 
 echo "==> benchmark: $N finding(s) on scan $SCAN_ID"
 echo "$FINDINGS" | jq -r '.items[] | "    finding: \(.rule_id) tier=\(.assessment_tier)"'
-
-RULE_IDOR="axiom.idor.path_swap.v1"
-RULE_MASS="axiom.mass.privilege_merge.v1"
-RULE_PATHNORM="axiom.pathnorm.variant.v1"
-RULE_RATELIMIT="axiom.ratelimit.header_rotate.v1"
 
 expect_count() {
   local rule="$1"
@@ -159,7 +198,8 @@ expect_count "$RULE_MASS" 1
 expect_count "$RULE_PATHNORM" 2
 expect_count "$RULE_RATELIMIT" 0
 
-echo "    benchmark harness: scan A has no rate-limit finding because httpbin does not expose the differential ${RULE_RATELIMIT} header behavior (fixture-limited honest no-finding; matchers did not pass)."
+assert_bench_harness_no_finding "$BENCH_TARGET_HTTPBIN" "$RULE_RATELIMIT" "$BENCH_CODES_HTTPBIN_RATE_NO_ROW"
+echo "    bench_harness scan=A no_row rule=${RULE_RATELIMIT} codes=${BENCH_CODES_HTTPBIN_RATE_NO_ROW}"
 
 all_tier "$RULE_IDOR" "tentative"
 all_tier "$RULE_MASS" "confirmed"
@@ -197,7 +237,13 @@ while read -r fid; do
 done < <(echo "$FINDINGS" | jq -r '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')
 assert_tentative_evidence_notes "$FID_IDOR"
 
+while read -r fid; do
+  [[ -n "$fid" ]] || continue
+  assert_bench_harness_row "$BENCH_TARGET_HTTPBIN" "$fid" "$BENCH_CODES_HTTPBIN_TENTATIVE"
+done < <(echo "$FINDINGS" | jq -r '.items[] | select(.rule_id == "'"$RULE_IDOR"'" or .rule_id == "'"$RULE_PATHNORM"'") | .id')
+
 FID_MASS="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_MASS"'") | .id')"
+assert_bench_harness_row "$BENCH_TARGET_HTTPBIN" "$FID_MASS" "$BENCH_CODES_HTTPBIN_MASS_CONFIRMED"
 assert_confirmed_evidence_no_interpretation_hints "$FID_MASS"
 MASS_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_MASS")"
 echo "$MASS_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
@@ -225,7 +271,7 @@ curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions/$MEXEC" | jq -e '.phase == "mu
 SCAN_RL="$(
   curl -sf -X POST "$AXIOM_URL/v1/scans" \
     -H 'Content-Type: application/json' \
-    -d '{"target_label":"bench-rate-stub","safety_mode":"safe","allow_full_execution":false,"base_url":"'"$RATE_STUB_URL"'"}' |
+    -d '{"target_label":"'"$BENCH_TARGET_STUB"'","safety_mode":"safe","allow_full_execution":false,"base_url":"'"$RATE_STUB_URL"'"}' |
     jq -er .id
 )"
 curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_RL/specs/openapi" \
@@ -277,16 +323,18 @@ if [[ "$bad_path_rl" != 0 ]]; then
 fi
 
 FID_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_RATELIMIT"'") | .id')"
+assert_bench_harness_row "$BENCH_TARGET_STUB" "$FID_RL" "$BENCH_CODES_STUB_RATE_CONFIRMED"
 assert_confirmed_evidence_no_interpretation_hints "$FID_RL"
 RL_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_RL")"
 echo "$RL_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
 FID_PATHSTUB="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')"
+assert_bench_harness_row "$BENCH_TARGET_STUB" "$FID_PATHSTUB" "$BENCH_CODES_STUB_PATHNORM_TENTATIVE"
 assert_tentative_evidence_notes "$FID_PATHSTUB"
 EP_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_RATELIMIT"'") | .scan_endpoint_id')"
 curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/endpoints/$EP_RL" | jq -e '.drilldown.findings_list_path | startswith("/v1/")' >/dev/null
 RL_EXEC="$(echo "$RL_DETAIL" | jq -er '.mutated_execution_id')"
 curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions/$RL_EXEC" | jq -e '.phase == "mutated"' >/dev/null
 
-echo "    benchmark harness: scan B ${RULE_PATHNORM} row is the same weak-similarity tentative class as httpbin pathnorm; the nginx stub only changes eligibility/header facts for ${RULE_RATELIMIT} (fixture coupling artifact vs httpbin, not a different scanner tier policy)."
+echo "    bench_harness scan=B pathnorm_fixture_artifact codes=${BENCH_CODES_STUB_PATHNORM_TENTATIVE}"
 
 echo "OK: finding-quality benchmark passed (httpbin + rate stub, four V1 families with honest httpbin no-finding for rate limit)."
