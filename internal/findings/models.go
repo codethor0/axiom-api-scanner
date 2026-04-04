@@ -18,23 +18,25 @@ const (
 
 // Finding is an evidence-backed potential logic flaw.
 type Finding struct {
-	ID          string    `json:"id"`
-	ScanID      string    `json:"scan_id"`
-	RuleID      string    `json:"rule_id"`
-	Category    string    `json:"category"`
-	Severity    Severity  `json:"severity"`
-	// Confidence is the assessed tier: confirmed, tentative, or incomplete (see evidence_summary for rule-declared confidence).
-	Confidence  string          `json:"confidence"`
-	Summary     string          `json:"summary"`
+	ID    string   `json:"id"`
+	ScanID string  `json:"scan_id"`
+	RuleID string  `json:"rule_id"`
+	Category string `json:"category"`
+	// Severity is rule/finding impact (info, low, medium, high, critical), unrelated to assessment tier.
+	Severity Severity `json:"severity"`
+	// RuleDeclaredConfidence is the authoring-time signal quality from the rule YAML (high, medium, low).
+	RuleDeclaredConfidence string `json:"rule_declared_confidence"`
+	// AssessmentTier is the post-run evidence assessment: confirmed, tentative, or incomplete.
+	AssessmentTier string          `json:"assessment_tier"`
+	Summary        string          `json:"summary"`
 	EvidenceSummary json.RawMessage `json:"evidence_summary,omitempty"`
-	EvidenceURI string    `json:"evidence_uri"`
+	EvidenceURI    string    `json:"evidence_uri"`
 	// ScanEndpointID links to the persisted OpenAPI operation row (optional).
 	ScanEndpointID string `json:"scan_endpoint_id,omitempty"`
 	// BaselineExecutionID and MutatedExecutionID reference execution_records when present.
 	BaselineExecutionID string `json:"baseline_execution_id,omitempty"`
 	MutatedExecutionID  string `json:"mutated_execution_id,omitempty"`
-	Status              string `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt             time.Time `json:"created_at"`
 }
 
 // EvidenceArtifact is persisted proof material for a finding.

@@ -29,7 +29,7 @@ func ValidateRuleConfidence(r Rule) error {
 	case "high", "medium", "low":
 		return nil
 	default:
-		return fmt.Errorf("confidence must be one of high, medium, low (got %q)", r.Confidence)
+		return fmt.Errorf("confidence: use only high, medium, or low (got %q)", r.Confidence)
 	}
 }
 
@@ -41,11 +41,11 @@ func ValidateSafePassiveV1(r Rule) error {
 		return nil
 	}
 	if len(r.Mutations) != 1 {
-		return fmt.Errorf("safe/passive V1 rules require exactly one mutation (got %d); split multi-step checks into separate rules (documented limitation)", len(r.Mutations))
+		return fmt.Errorf("[v1 safe/passive] exactly one mutation is required (found %d). Split each check into its own YAML document—see docs/rule-authoring.md", len(r.Mutations))
 	}
 	fam := V1Family(r.Mutations[0])
 	if fam == "" {
-		return fmt.Errorf("unsupported mutation for V1 safe rule")
+		return fmt.Errorf("[v1 safe/passive] mutation kind %q is not part of the supported V1 families", r.Mutations[0].Kind)
 	}
 	if err := validateNoConflictingMatchers(r.Matchers); err != nil {
 		return err
@@ -54,21 +54,21 @@ func ValidateSafePassiveV1(r Rule) error {
 	var headerish int
 	for i, m := range r.Matchers {
 		if !allowed[m.Kind] {
-			return fmt.Errorf("matchers[%d]: kind %q is not allowed for V1 family %q on safe/passive rules", i, m.Kind, fam)
+			return fmt.Errorf("[v1 family %q] matchers[%d]: kind %q is not allowed under safe/passive rules for this family (IDOR/mass_assignment/path_norm use body/status matchers only; rate_limit_headers may use header matchers)", fam, i, m.Kind)
 		}
 		if isHeaderishMatcher(m.Kind) {
 			headerish++
 		}
 		if m.Kind == MatcherResponseBodySimilarity && m.ResponseBodySimilarity != nil {
 			if m.ResponseBodySimilarity.MinScore < 0.75 {
-				return fmt.Errorf("matchers[%d]: response_body_similarity.min_score must be >= 0.75 for safe/passive rules", i)
+				return fmt.Errorf("[v1 safe/passive] matchers[%d]: response_body_similarity.min_score must be >= 0.75 (got %.4f)", i, m.ResponseBodySimilarity.MinScore)
 			}
 		}
 	}
 	switch fam {
 	case "rate_limit_headers":
 		if headerish == 0 {
-			return fmt.Errorf("rate_limit_headers rules require at least one of header_present, header_absent, response_header_differs_from_baseline")
+			return fmt.Errorf("[v1 family rate_limit_headers] add at least one of: header_present, header_absent, response_header_differs_from_baseline (proves header surface changed)")
 		}
 	}
 	return nil
@@ -94,7 +94,7 @@ func validateNoConflictingMatchers(matchers []Matcher) error {
 		}
 	}
 	if unchanged && differs {
-		return fmt.Errorf("matchers cannot combine status_code_unchanged with status_differs_from_baseline")
+		return fmt.Errorf("[matchers] cannot combine status_code_unchanged with status_differs_from_baseline (pick one response expectation)")
 	}
 	return nil
 }

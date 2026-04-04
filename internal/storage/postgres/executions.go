@@ -140,6 +140,16 @@ func (s *Store) ListExecutions(ctx context.Context, scanID string, filter storag
 	if filter.ScanEndpointID != "" {
 		q += fmt.Sprintf(" AND scan_endpoint_id = $%d", n)
 		args = append(args, filter.ScanEndpointID)
+		n++
+	}
+	if filter.RuleID != "" {
+		q += fmt.Sprintf(" AND rule_id = $%d", n)
+		args = append(args, filter.RuleID)
+		n++
+	}
+	if filter.ResponseStatus > 0 {
+		q += fmt.Sprintf(" AND response_status = $%d", n)
+		args = append(args, filter.ResponseStatus)
 	}
 	q += " ORDER BY created_at ASC"
 	rows, err := s.pool.Query(ctx, q, args...)

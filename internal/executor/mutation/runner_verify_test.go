@@ -86,19 +86,19 @@ func (m *memMutationStore) CreateFinding(_ context.Context, in storage.CreateFin
 	m.createCalls++
 	id := uuid.NewString()
 	f := findings.Finding{
-		ID:                   id,
-		ScanID:               in.ScanID,
-		RuleID:               in.RuleID,
-		Category:             in.Category,
-		Severity:             in.Severity,
-		Confidence:           in.Confidence,
-		Summary:              in.Summary,
-		EvidenceSummary:      in.EvidenceSummary,
-		ScanEndpointID:       in.ScanEndpointID,
-		BaselineExecutionID:  in.BaselineExecutionID,
-		MutatedExecutionID:   in.MutatedExecutionID,
-		Status:               in.FindingStatus,
-		CreatedAt:            time.Now().UTC(),
+		ID:                     id,
+		ScanID:                 in.ScanID,
+		RuleID:                 in.RuleID,
+		Category:               in.Category,
+		Severity:               in.Severity,
+		RuleDeclaredConfidence: in.RuleDeclaredConfidence,
+		AssessmentTier:         in.AssessmentTier,
+		Summary:                in.Summary,
+		EvidenceSummary:        in.EvidenceSummary,
+		ScanEndpointID:         in.ScanEndpointID,
+		BaselineExecutionID:   in.BaselineExecutionID,
+		MutatedExecutionID:    in.MutatedExecutionID,
+		CreatedAt:              time.Now().UTC(),
 	}
 	if in.EvidenceURI == "" {
 		f.EvidenceURI = "/v1/findings/" + id + "/evidence"
@@ -265,8 +265,11 @@ func TestRunner_createsFindingWhenMatchersPass(t *testing.T) {
 	if st.lastFinding.BaselineExecutionID != "base-1" {
 		t.Fatal(st.lastFinding)
 	}
-	if st.lastFinding.Confidence != "confirmed" || st.lastFinding.Status != "confirmed" {
-		t.Fatalf("want confirmed tier got conf=%q status=%q", st.lastFinding.Confidence, st.lastFinding.Status)
+	if st.lastFinding.AssessmentTier != "confirmed" {
+		t.Fatalf("want confirmed assessment tier got %q", st.lastFinding.AssessmentTier)
+	}
+	if st.lastFinding.RuleDeclaredConfidence != "high" {
+		t.Fatalf("rule declared confidence want high got %q", st.lastFinding.RuleDeclaredConfidence)
 	}
 	if len(st.lastFinding.EvidenceSummary) == 0 {
 		t.Fatal("expected evidence_summary json")

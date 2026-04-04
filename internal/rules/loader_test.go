@@ -103,6 +103,39 @@ references:
 	}
 }
 
+func TestParseDocuments_validationErrorIsNumbered(t *testing.T) {
+	doc := `
+id: x
+name: n
+category: c
+severity: high
+confidence: bogus
+safety:
+  mode: safe
+  destructive: false
+target:
+  methods: [GET]
+  where: path
+prerequisites: []
+mutations:
+  - kind: replace_path_param
+    param: id
+    from: a
+    to: b
+matchers:
+  - kind: status_code_unchanged
+references:
+  - https://example.com
+`
+	_, err := ParseDocuments([]byte(doc))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "issues") || !strings.Contains(err.Error(), "[metadata]") {
+		t.Fatalf("expected numbered validation error, got: %s", err.Error())
+	}
+}
+
 func TestParseDocuments_invalidConfidence(t *testing.T) {
 	doc := `
 id: bad.conf

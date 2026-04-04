@@ -46,7 +46,9 @@ Typed YAML rules: mutations, matchers (including `status_differs_from_baseline`,
 
 ### Findings (`internal/findings`)
 
-Finding model includes linkage fields (`scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`), `confidence` and `status` tiers (`confirmed` / `tentative` / `incomplete`), human `summary`, and `evidence_summary` JSON. Tiers are derived from rule severity, declared rule confidence, weak matcher signals (substring or similarity below 0.9), and HTTP evidence completeness (execution ids and successful status codes). Findings are inserted only from the mutation path when diff evaluation passes and is not incomplete; `evidence_artifacts` still hold raw request/body snapshots and a short diff line.
+Finding rows store **severity** (impact), **rule_declared_confidence** (YAML `high`/`medium`/`low`), and **assessment_tier** (`confirmed`/`tentative`/`incomplete`) as separate columns—no field overloads. Assessment uses rule severity, declared confidence, weak matcher signals, and HTTP evidence completeness. `evidence_summary` JSON duplicates tier and declared confidence for artifact bundles. Findings are inserted only from the mutation path when diff evaluation passes and is not incomplete; `evidence_artifacts` still hold raw request/body snapshots and a short diff line.
+
+HTTP API lists executions as **execution read** projections: nested `request` / `response` objects, `mutation_rule_id` instead of a generic `rule_id` at the top level, and `response.status_code` naming for clarity.
 
 ### Shared HTTP helpers (`internal/executil`)
 

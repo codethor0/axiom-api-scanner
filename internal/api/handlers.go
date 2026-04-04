@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
@@ -366,6 +367,12 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 	filter := storage.ExecutionListFilter{
 		Phase:          strings.TrimSpace(r.URL.Query().Get("phase")),
 		ScanEndpointID: strings.TrimSpace(r.URL.Query().Get("scan_endpoint_id")),
+		RuleID:         strings.TrimSpace(r.URL.Query().Get("rule_id")),
+	}
+	if rs := strings.TrimSpace(r.URL.Query().Get("response_status")); rs != "" {
+		if code, perr := strconv.Atoi(rs); perr == nil && code > 0 {
+			filter.ResponseStatus = code
+		}
 	}
 	list, err := h.Executions.ListExecutions(r.Context(), id, filter)
 	if err != nil {
@@ -375,7 +382,11 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []engine.ExecutionRecord{}
 	}
-	writeJSON(w, http.StatusOK, list)
+	out := make([]ExecutionRead, len(list))
+	for i := range list {
+		out[i] = NewExecutionRead(list[i])
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
@@ -410,7 +421,7 @@ func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load execution")
 		return
 	}
-	writeJSON(w, http.StatusOK, rec)
+	writeJSON(w, http.StatusOK, NewExecutionRead(rec))
 }
 
 func (h *Handler) loadRules() ([]rules.Rule, error) {
@@ -481,7 +492,12 @@ func (h *Handler) listFindings(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
 		return
 	}
-	list, err := h.Findings.ListByScanID(r.Context(), id)
+	filter := storage.FindingListFilter{
+		AssessmentTier:         strings.TrimSpace(r.URL.Query().Get("assessment_tier")),
+		Severity:               strings.TrimSpace(r.URL.Query().Get("severity")),
+		RuleDeclaredConfidence: strings.TrimSpace(r.URL.Query().Get("rule_declared_confidence")),
+	}
+	list, err := h.Findings.ListByScanID(r.Context(), id, filter)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list findings")
 		return

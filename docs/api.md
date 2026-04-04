@@ -95,24 +95,39 @@ If baseline is missing or not `succeeded`, `result.status` is `failed` with `bas
 
 ### GET /v1/scans/{scanID}/executions
 
-Lists `ExecutionRecord` rows for the scan, oldest first. Optional query parameters:
+Lists stored HTTP exchanges for the scan, oldest first. Response body is a JSON array of **execution read** objects (stable envelope: `request` and `response` snapshots, `mutation_rule_id` for mutated rows, `phase`, `duration_ms`, `created_at`). Optional query parameters:
 
 - `phase`: `baseline` or `mutated`
 - `scan_endpoint_id`: UUID of an imported endpoint
+- `rule_id`: exact `mutation_rule_id` filter (mutated rows only store this when tied to a rule candidate)
+- `response_status`: exact HTTP status code integer (e.g. `200`)
 
 ### GET /v1/scans/{scanID}/executions/{executionID}
 
-Returns one execution record when it belongs to the scan. `404` when missing or mismatched.
+Returns one execution read object when it belongs to the scan. `404` when missing or mismatched.
 
 ### GET /v1/scans/{scanID}/findings
 
-Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each row includes an assessed `confidence` tier and `status` (both mirror the same tier today: `confirmed`, `tentative`, or `incomplete`) plus optional `evidence_summary` JSON (schema version 1: rule id, execution ids, matcher outcome lines, diff points, declared rule confidence).
+Lists findings for the scan. Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each row uses **non-overlapping** fields:
+
+- `severity`: impact bucket from the rule (not the same as assessment tier).
+- `rule_declared_confidence`: author-declared signal from rule YAML (`high`, `medium`, `low`).
+- `assessment_tier`: post-run tier (`confirmed`, `tentative`, `incomplete`) from evidence and matcher strength rules.
+- `evidence_summary`: structured JSON (schema version 1) with matcher outcomes, diff points, and both `assessment_tier` and `rule_declared_confidence` duplicated for bundle consumers.
+
+Optional query parameters (all exact match, ANDed):
+
+- `assessment_tier`
+- `severity`
+- `rule_declared_confidence`
 
 ## Findings
 
 ### GET /v1/findings/{findingID}
 
-Returns a finding row, including `scan_endpoint_id`, `baseline_execution_id`, `mutated_execution_id`, `confidence` (tier), `status` (tier), human `summary`, and `evidence_summary` (structured JSON) when persisted.
+Returns one finding row with the same fields as the list endpoint (`severity`, `rule_declared_confidence`, `assessment_tier`, `summary`, `evidence_summary`, execution linkage ids).
+
+Rule load failures (`GET /v1/rules`) return `rule_load_failed` with a **numbered, multi-line** validation message when YAML fails validation.
 
 ### GET /v1/findings/{findingID}/evidence
 

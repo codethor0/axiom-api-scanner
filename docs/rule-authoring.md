@@ -34,14 +34,16 @@ When `safety.mode` is **`safe`** or **`passive`**:
 - **Family-specific matcher allowlists:** IDOR, mass assignment, and path normalization rules may use body or status-oriented matchers only (`header_present`, `header_absent`, and `response_header_differs_from_baseline` are rejected there). **Rate-limit header** rules must include at least one header-oriented matcher among those three plus may combine status/body matchers.
 - **`response_body_similarity.min_score`** must be **>= 0.75** on safe/passive rules. Similarity below **0.9** still counts as a **weak signal** at finding time (findings stay **tentative** even when matchers pass).
 
-## Finding confidence and `evidence_summary`
+## Finding fields vs rule YAML
 
 When matchers pass with complete HTTP evidence, the service persists:
 
-- **`confidence`** and **`status`** on the finding row: both use the assessed tier **`confirmed`**, **`tentative`**, or **`incomplete`** (no ML). **`incomplete`** is used when baseline or mutated execution ids are missing, either side has HTTP status `0`, or the diff summary is empty. **`tentative`** applies when the rule declared `low` confidence, severity is `info` or `low`, or a weak matcher signal is configured (substring matcher, or similarity threshold under `0.9`).
-- **`evidence_summary`** (JSON, `schema_version` **1**): `rule_id`, baseline and mutated `execution` ids, endpoint method/path template, `matcher_outcomes` (index, kind, pass, summary line), `diff_points` (evaluator reasons plus matcher notes), `confidence_tier`, `rule_severity`, `rule_declared_confidence`, optional `assessment_notes`.
+- **`severity`** on the finding is the rule’s impact bucket (unchanged semantics).
+- **`rule_declared_confidence`** on the finding is the YAML `confidence` field (`high`/`medium`/`low`) only—it is **not** the assessment tier.
+- **`assessment_tier`** on the finding is **`confirmed`**, **`tentative`**, or **`incomplete`** (no ML). **`incomplete`** applies when baseline or mutated execution ids are missing, either side has HTTP status `0`, or the diff summary is empty. **`tentative`** applies when the rule declared `low` confidence, severity is `info` or `low`, or a weak matcher signal is configured (substring matcher, or similarity threshold under `0.9`).
+- **`evidence_summary`** (JSON, `schema_version` **1**): `rule_id`, baseline and mutated execution ids, endpoint method/path template, `matcher_outcomes` (index, kind, pass, short `summary`), `diff_points`, **`assessment_tier`**, `rule_severity`, **`rule_declared_confidence`**, optional `assessment_notes`. The JSON **`assessment_tier`** matches the column; **`rule_declared_confidence`** matches the column.
 
-Rule YAML `confidence` does **not** overwrite the stored tier; it is copied into `evidence_summary.rule_declared_confidence` for audit.
+Rule validation failures are returned as numbered multi-line messages (for example from `GET /v1/rules`) with bracketed categories such as `[metadata]`, `[v1 safe/passive]`, `[matchers]`.
 
 ## V1 mutation kinds
 

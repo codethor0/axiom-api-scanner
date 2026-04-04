@@ -100,7 +100,7 @@ func TestAPI_listExecutions_empty(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	var list []engine.ExecutionRecord
+	var list []ExecutionRead
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		t.Fatal(err)
 	}

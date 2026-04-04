@@ -8,7 +8,7 @@ import (
 func TestMarshalEvidenceSummaryJSON_roundTrip(t *testing.T) {
 	raw, err := MarshalEvidenceSummaryJSON(EvidenceSummaryV1{
 		RuleID:         "r1",
-		ConfidenceTier: "tentative",
+		AssessmentTier: "tentative",
 		RuleSeverity:   "medium",
 		MatcherOutcomes: []MatcherOutcomeSummary{
 			{Index: 0, Kind: "status_code_unchanged", Passed: true, Summary: "ok"},

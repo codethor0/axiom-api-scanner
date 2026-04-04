@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -177,6 +178,12 @@ func (m *memRepositories) ListExecutions(_ context.Context, scanID string, filte
 		if filter.ScanEndpointID != "" && rec.ScanEndpointID != filter.ScanEndpointID {
 			continue
 		}
+		if filter.RuleID != "" && rec.RuleID != filter.RuleID {
+			continue
+		}
+		if filter.ResponseStatus > 0 && rec.ResponseStatus != filter.ResponseStatus {
+			continue
+		}
 		list = append(list, rec)
 	}
 	sort.Slice(list, func(i, j int) bool {
@@ -220,24 +227,24 @@ func (m *memRepositories) CreateFinding(_ context.Context, in storage.CreateFind
 	if evidenceURI == "" {
 		evidenceURI = "/v1/findings/" + id + "/evidence"
 	}
-	st := "confirmed"
-	if in.FindingStatus != "" {
-		st = in.FindingStatus
+	tier := in.AssessmentTier
+	if tier == "" {
+		tier = "tentative"
 	}
 	f := findings.Finding{
-		ID:                   id,
-		ScanID:               in.ScanID,
-		RuleID:               in.RuleID,
-		Category:             in.Category,
-		Severity:             in.Severity,
-		Confidence:           in.Confidence,
-		Summary:              in.Summary,
-		EvidenceURI:          evidenceURI,
-		ScanEndpointID:       in.ScanEndpointID,
-		BaselineExecutionID:  in.BaselineExecutionID,
-		MutatedExecutionID:   in.MutatedExecutionID,
-		Status:               st,
-		CreatedAt:            now,
+		ID:                     id,
+		ScanID:                 in.ScanID,
+		RuleID:                 in.RuleID,
+		Category:               in.Category,
+		Severity:               in.Severity,
+		RuleDeclaredConfidence: in.RuleDeclaredConfidence,
+		AssessmentTier:         tier,
+		Summary:                in.Summary,
+		EvidenceURI:            evidenceURI,
+		ScanEndpointID:         in.ScanEndpointID,
+		BaselineExecutionID:    in.BaselineExecutionID,
+		MutatedExecutionID:     in.MutatedExecutionID,
+		CreatedAt:              now,
 	}
 	if len(in.EvidenceSummary) > 0 {
 		f.EvidenceSummary = in.EvidenceSummary
@@ -310,10 +317,23 @@ func nextScanStatusMem(cur engine.ScanStatus, action storage.ScanControlAction) 
 	return "", storage.ErrInvalidTransition
 }
 
-func (m *memRepositories) ListByScanID(_ context.Context, scanID string) ([]findings.Finding, error) {
+func (m *memRepositories) ListByScanID(_ context.Context, scanID string, filter storage.FindingListFilter) ([]findings.Finding, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]findings.Finding(nil), m.byScan[scanID]...), nil
+	var out []findings.Finding
+	for _, f := range m.byScan[scanID] {
+		if filter.AssessmentTier != "" && f.AssessmentTier != filter.AssessmentTier {
+			continue
+		}
+		if filter.Severity != "" && string(f.Severity) != filter.Severity {
+			continue
+		}
+		if filter.RuleDeclaredConfidence != "" && f.RuleDeclaredConfidence != filter.RuleDeclaredConfidence {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out, nil
 }
 
 func (m *memRepositories) GetByID(_ context.Context, id string) (findings.Finding, error) {
@@ -346,6 +366,33 @@ func testHandler(mem *memRepositories) *Handler {
 		Findings:    mem,
 		Evidence:    mem,
 		Baseline:    nil,
+	}
+}
+
+func TestListExecutions_returnsExecutionReadEnvelope(t *testing.T) {
+	mem := newMemRepositories()
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	body := `{"target_label":"t","safety_mode":"safe"}`
+	cr, err := http.Post(srv.URL+"/v1/scans", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scan engine.Scan
+	_ = json.NewDecoder(cr.Body).Decode(&scan)
+	_ = cr.Body.Close()
+
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/executions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var list []ExecutionRead
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatal(err)
+	}
+	if list == nil {
+		t.Fatal("want non-nil slice")
 	}
 }
 

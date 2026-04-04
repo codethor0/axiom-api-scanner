@@ -242,16 +242,16 @@ func TestFindingWrite_integration(t *testing.T) {
 	}
 
 	fin, err := s.CreateFinding(ctx, storage.CreateFindingInput{
-		ScanID:              scan.ID,
-		RuleID:              "rule.integration",
-		Category:            "test",
-		Severity:            findings.SeverityLow,
-		Confidence:          "high",
-		Summary:             "integration finding",
-		ScanEndpointID:      ep.ID,
-		BaselineExecutionID: bid,
-		MutatedExecutionID:  mid,
-		FindingStatus:       "confirmed",
+		ScanID:                 scan.ID,
+		RuleID:                 "rule.integration",
+		Category:               "test",
+		Severity:               findings.SeverityLow,
+		RuleDeclaredConfidence: "high",
+		AssessmentTier:         "confirmed",
+		Summary:                "integration finding",
+		ScanEndpointID:         ep.ID,
+		BaselineExecutionID:    bid,
+		MutatedExecutionID:     mid,
 		Evidence: storage.CreateEvidenceInput{
 			BaselineRequest: `{"method":"GET"}`,
 			MutatedRequest:  `{"method":"GET"}`,

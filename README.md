@@ -5,7 +5,7 @@ Axiom is a safe-by-default, evidence-driven API scanner for **authorized** secur
 ## What Axiom is
 
 - A disciplined rule engine with YAML-defined checks, schema validation, and citations.
-- A control-plane HTTP API plus a worker entrypoint for asynchronous execution (worker is scaffold-only today).
+- A control-plane HTTP API plus a worker entrypoint for asynchronous execution (worker is scaffold-only today). Read APIs return explicit finding fields (`severity`, `rule_declared_confidence`, `assessment_tier`) and nested execution snapshots for list/detail execution routes—see [docs/api.md](docs/api.md).
 - An OpenAPI 3.x ingestion path for endpoint discovery (first-class input format for V1).
 
 ## What Axiom is not

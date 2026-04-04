@@ -74,6 +74,17 @@ type MutationRunStateRepository interface {
 type ExecutionListFilter struct {
 	Phase          string
 	ScanEndpointID string
+	// RuleID filters mutated rows that recorded this rule id (baseline rows have empty rule_id).
+	RuleID string
+	// ResponseStatus filters by exact HTTP status code; 0 means unset (no filter).
+	ResponseStatus int
+}
+
+// FindingListFilter narrows finding list queries (read-only; all fields optional).
+type FindingListFilter struct {
+	AssessmentTier         string
+	Severity               string
+	RuleDeclaredConfidence string
 }
 
 // ExecutionRepository stores HTTP exchange evidence rows.
@@ -101,24 +112,24 @@ type CreateEvidenceInput struct {
 
 // CreateFindingInput inserts a confirmed finding and its evidence artifact.
 type CreateFindingInput struct {
-	ScanID              string
-	RuleID              string
-	Category            string
-	Severity            findings.Severity
-	Confidence          string
-	Summary             string
-	EvidenceSummary     []byte
-	ScanEndpointID      string
-	BaselineExecutionID string
-	MutatedExecutionID  string
-	EvidenceURI         string
-	FindingStatus       string
-	Evidence            CreateEvidenceInput
+	ScanID                 string
+	RuleID                 string
+	Category               string
+	Severity               findings.Severity
+	RuleDeclaredConfidence string
+	AssessmentTier         string
+	Summary                string
+	EvidenceSummary        []byte
+	ScanEndpointID         string
+	BaselineExecutionID    string
+	MutatedExecutionID     string
+	EvidenceURI            string
+	Evidence               CreateEvidenceInput
 }
 
 // FindingRepository lists and fetches finding rows linked to scans.
 type FindingRepository interface {
-	ListByScanID(ctx context.Context, scanID string) ([]findings.Finding, error)
+	ListByScanID(ctx context.Context, scanID string, filter FindingListFilter) ([]findings.Finding, error)
 	GetByID(ctx context.Context, id string) (findings.Finding, error)
 	CreateFinding(ctx context.Context, in CreateFindingInput) (findings.Finding, error)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
@@ -11,18 +12,35 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const findingsRowSelect = `id, scan_id, rule_id, category, severity, confidence, summary,
+const findingsRowSelect = `id, scan_id, rule_id, category, severity, summary,
        COALESCE(NULLIF(evidence_summary, ''), '{}'),
        evidence_uri,
        COALESCE(scan_endpoint_id::text, ''),
        COALESCE(baseline_execution_id::text, ''),
        COALESCE(mutated_execution_id::text, ''),
-       finding_status, created_at`
+       assessment_tier, rule_declared_confidence, created_at`
 
 // ListByScanID returns findings for a scan ordered by creation time.
-func (s *Store) ListByScanID(ctx context.Context, scanID string) ([]findings.Finding, error) {
-	q := `SELECT ` + findingsRowSelect + ` FROM findings WHERE scan_id = $1 ORDER BY created_at ASC`
-	rows, err := s.pool.Query(ctx, q, scanID)
+func (s *Store) ListByScanID(ctx context.Context, scanID string, filter storage.FindingListFilter) ([]findings.Finding, error) {
+	q := `SELECT ` + findingsRowSelect + ` FROM findings WHERE scan_id = $1`
+	args := []any{scanID}
+	n := 2
+	if t := strings.TrimSpace(filter.AssessmentTier); t != "" {
+		q += fmt.Sprintf(" AND assessment_tier = $%d", n)
+		args = append(args, t)
+		n++
+	}
+	if t := strings.TrimSpace(filter.Severity); t != "" {
+		q += fmt.Sprintf(" AND severity = $%d", n)
+		args = append(args, t)
+		n++
+	}
+	if t := strings.TrimSpace(filter.RuleDeclaredConfidence); t != "" {
+		q += fmt.Sprintf(" AND rule_declared_confidence = $%d", n)
+		args = append(args, strings.ToLower(t))
+	}
+	q += " ORDER BY created_at ASC"
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
 	}
@@ -51,14 +69,14 @@ func scanFindingRow(row pgx.Row) (findings.Finding, error) {
 		&f.RuleID,
 		&f.Category,
 		&sev,
-		&f.Confidence,
 		&f.Summary,
 		&evSum,
 		&f.EvidenceURI,
 		&f.ScanEndpointID,
 		&f.BaselineExecutionID,
 		&f.MutatedExecutionID,
-		&f.Status,
+		&f.AssessmentTier,
+		&f.RuleDeclaredConfidence,
 		&f.CreatedAt,
 	)
 	if err != nil {
@@ -86,8 +104,8 @@ func (s *Store) GetByID(ctx context.Context, id string) (findings.Finding, error
 
 // CreateFinding inserts a finding, evidence artifact, and increments findings_count on the scan.
 func (s *Store) CreateFinding(ctx context.Context, in storage.CreateFindingInput) (findings.Finding, error) {
-	if in.FindingStatus == "" {
-		in.FindingStatus = "tentative"
+	if in.AssessmentTier == "" {
+		in.AssessmentTier = "tentative"
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -120,8 +138,8 @@ func (s *Store) CreateFinding(ctx context.Context, in storage.CreateFindingInput
 
 	const insF = `
 INSERT INTO findings (
-  id, scan_id, rule_id, category, severity, confidence, summary, evidence_summary, evidence_uri,
-  scan_endpoint_id, baseline_execution_id, mutated_execution_id, finding_status
+  id, scan_id, rule_id, category, severity, summary, evidence_summary, evidence_uri,
+  scan_endpoint_id, baseline_execution_id, mutated_execution_id, assessment_tier, rule_declared_confidence
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING ` + findingsRowSelect
 
@@ -131,14 +149,14 @@ RETURNING ` + findingsRowSelect
 		in.RuleID,
 		in.Category,
 		string(in.Severity),
-		in.Confidence,
 		in.Summary,
 		evidenceSummary,
 		evidenceURI,
 		epID,
 		baseID,
 		mutID,
-		in.FindingStatus,
+		in.AssessmentTier,
+		in.RuleDeclaredConfidence,
 	))
 	if err != nil {
 		return findings.Finding{}, fmt.Errorf("insert finding: %w", err)

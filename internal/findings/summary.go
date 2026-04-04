@@ -24,8 +24,9 @@ type EvidenceSummaryV1 struct {
 	MatcherOutcomes      []MatcherOutcomeSummary `json:"matcher_outcomes,omitempty"`
 	DiffPoints           []string                `json:"diff_points,omitempty"`
 
-	ConfidenceTier         string `json:"confidence_tier"`
-	RuleSeverity           string `json:"rule_severity"`
+	AssessmentTier string `json:"assessment_tier"`
+	RuleSeverity   string `json:"rule_severity"`
+	// RuleDeclaredConfidence duplicates the column for bundle consumers (same as finding.rule_declared_confidence).
 	RuleDeclaredConfidence string `json:"rule_declared_confidence"`
 	AssessmentNotes        []string `json:"assessment_notes,omitempty"`
 }
