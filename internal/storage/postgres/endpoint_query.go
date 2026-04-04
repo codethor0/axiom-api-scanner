@@ -8,6 +8,24 @@ import (
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
 
+// endpointInventoryExecFindingCTEs counts baseline/mutated execution rows and findings per scan_endpoint for scan_id $1 (reused by inventory list with summary).
+const endpointInventoryExecFindingCTEs = `
+WITH b AS (
+  SELECT scan_endpoint_id, COUNT(*)::int AS n FROM execution_records
+  WHERE scan_id = $1 AND phase = 'baseline' AND scan_endpoint_id IS NOT NULL
+  GROUP BY scan_endpoint_id
+),
+m AS (
+  SELECT scan_endpoint_id, COUNT(*)::int AS n FROM execution_records
+  WHERE scan_id = $1 AND phase = 'mutated' AND scan_endpoint_id IS NOT NULL
+  GROUP BY scan_endpoint_id
+),
+f AS (
+  SELECT scan_endpoint_id, COUNT(*)::int AS n FROM findings
+  WHERE scan_id = $1 AND scan_endpoint_id IS NOT NULL
+  GROUP BY scan_endpoint_id
+)`
+
 func endpointOrderSQL(sortField, sortOrder string) string {
 	asc := strings.EqualFold(sortOrder, storage.ListSortAsc)
 	dir := " ASC"

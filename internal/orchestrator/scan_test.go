@@ -38,6 +38,9 @@ func (o *onlyGetScanStore) ReplaceScanEndpoints(context.Context, string, []engin
 func (o *onlyGetScanStore) ListScanEndpoints(context.Context, string, storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
 	panic("ListScanEndpoints")
 }
+func (o *onlyGetScanStore) ListScanEndpointsForRunStatus(context.Context, string, storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
+	panic("ListScanEndpointsForRunStatus")
+}
 func (o *onlyGetScanStore) ListEndpointInventoryPage(context.Context, string, storage.EndpointListFilter, storage.EndpointInventoryOptions, storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
 	panic("ListEndpointInventoryPage")
 }

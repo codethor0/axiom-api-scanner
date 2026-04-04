@@ -95,6 +95,9 @@ func (s *stubResumeStore) ListScanEndpoints(_ context.Context, scanID string, _ 
 	}
 	return s.endpoints, nil
 }
+func (s *stubResumeStore) ListScanEndpointsForRunStatus(ctx context.Context, scanID string, filter storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
+	return s.ListScanEndpoints(ctx, scanID, filter)
+}
 func (s *stubResumeStore) ListEndpointInventoryPage(ctx context.Context, scanID string, filter storage.EndpointListFilter, _ storage.EndpointInventoryOptions, page storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
 	if page.Limit <= 0 {
 		return storage.EndpointListPage{}, fmt.Errorf("invalid limit")

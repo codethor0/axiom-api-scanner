@@ -7,6 +7,7 @@ import (
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
+	v1plan "github.com/codethor0/axiom-api-scanner/internal/plan/v1"
 	"github.com/codethor0/axiom-api-scanner/internal/rules"
 	"github.com/codethor0/axiom-api-scanner/internal/storage"
 )
@@ -148,6 +149,40 @@ func TestSummarizeFindingsForScan_mem_matchesUnfilteredList(t *testing.T) {
 	want := findingsSummaryFromList(list)
 	if sum.Total != want.Total || !reflect.DeepEqual(sum.ByAssessmentTier, want.ByAssessmentTier) || !reflect.DeepEqual(sum.BySeverity, want.BySeverity) {
 		t.Fatalf("sum %#v want %#v", sum, want)
+	}
+}
+
+func TestListScanEndpointsForRunStatus_mem_plannerDecisionsMatchFullList(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := scan.ID
+	specs := []engine.EndpointSpec{
+		{Method: "GET", Path: "/a/{id}", SecuritySchemeHints: []string{"bearer"}},
+		{Method: "POST", Path: "/b", RequestBodyJSON: true, RequestContentTypes: []string{"application/json"}, ResponseContentTypes: []string{"application/json"}},
+	}
+	if rerr := mem.ReplaceScanEndpoints(ctx, id, specs); rerr != nil {
+		t.Fatal(rerr)
+	}
+	full, err := mem.ListScanEndpoints(ctx, id, storage.EndpointListFilter{})
+	if err != nil || len(full) != 2 {
+		t.Fatal(full, err)
+	}
+	light, err := mem.ListScanEndpointsForRunStatus(ctx, id, storage.EndpointListFilter{})
+	if err != nil || len(light) != 2 {
+		t.Fatal(light, err)
+	}
+	rl := []rules.Rule{
+		{ID: "r1", Target: rules.RuleTarget{Methods: []string{"GET"}, Where: "path_params.id"}, Mutations: rules.Mutations{{Kind: rules.MutationReplacePathParam}}},
+		{ID: "r2", Target: rules.RuleTarget{Methods: []string{"POST"}, Where: "json_body"}, Mutations: rules.Mutations{{Kind: rules.MutationMergeJSONFields}}},
+	}
+	for i := range full {
+		if !reflect.DeepEqual(v1plan.Plan(full[i], rl), v1plan.Plan(light[i], rl)) {
+			t.Fatalf("i=%d full=%+v light=%+v", i, full[i], light[i])
+		}
 	}
 }
 

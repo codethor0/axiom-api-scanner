@@ -144,6 +144,21 @@ func TestEndpointReplace_integration(t *testing.T) {
 	if len(list1) != 2 {
 		t.Fatalf("want 2 endpoints, got %d", len(list1))
 	}
+	runStat, err := s.ListScanEndpointsForRunStatus(ctx, scan.ID, storage.EndpointListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runStat) != len(list1) {
+		t.Fatalf("ListScanEndpointsForRunStatus len %d vs full %d", len(runStat), len(list1))
+	}
+	for i := range list1 {
+		if runStat[i].ID != list1[i].ID || runStat[i].Method != list1[i].Method || runStat[i].PathTemplate != list1[i].PathTemplate {
+			t.Fatalf("i=%d runStat=%+v full=%+v", i, runStat[i], list1[i])
+		}
+		if len(runStat[i].RequestContentTypes) != 0 || len(runStat[i].ResponseContentTypes) != 0 {
+			t.Fatalf("run-status projection should not load content types: %+v", runStat[i])
+		}
+	}
 	oldIDs := map[string]bool{list1[0].ID: true, list1[1].ID: true}
 
 	second := []engine.EndpointSpec{

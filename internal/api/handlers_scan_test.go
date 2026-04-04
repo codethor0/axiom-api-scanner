@@ -144,6 +144,20 @@ func (m *memRepositories) ListScanEndpoints(_ context.Context, scanID string, fi
 	return out, nil
 }
 
+func (m *memRepositories) ListScanEndpointsForRunStatus(ctx context.Context, scanID string, filter storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
+	eps, err := m.ListScanEndpoints(ctx, scanID, filter)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]engine.ScanEndpoint, len(eps))
+	for i := range eps {
+		out[i] = eps[i]
+		out[i].RequestContentTypes = nil
+		out[i].ResponseContentTypes = nil
+	}
+	return out, nil
+}
+
 func (m *memRepositories) ListEndpointInventoryPage(_ context.Context, scanID string, filter storage.EndpointListFilter, opt storage.EndpointInventoryOptions, opts storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
 	if opts.Limit <= 0 {
 		return storage.EndpointListPage{}, fmt.Errorf("list endpoint inventory page: invalid limit")

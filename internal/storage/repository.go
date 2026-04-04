@@ -113,6 +113,8 @@ type EndpointRepository interface {
 	ReplaceScanEndpoints(ctx context.Context, scanID string, specs []engine.EndpointSpec) error
 	// ListScanEndpoints returns imported rows in deterministic order (path_template, method, id) with optional narrow filters.
 	ListScanEndpoints(ctx context.Context, scanID string, filter EndpointListFilter) ([]engine.ScanEndpoint, error)
+	// ListScanEndpointsForRunStatus returns rows needed for GET .../run/status (planner + protected-route tallies): same identity and planner inputs as ListScanEndpoints but skips content-type columns not used by V1 Plan().
+	ListScanEndpointsForRunStatus(ctx context.Context, scanID string, filter EndpointListFilter) ([]engine.ScanEndpoint, error)
 	// ListEndpointInventoryPage returns one page of inventory rows (keyset cursor, deterministic sort); see EndpointListPageOptions.
 	ListEndpointInventoryPage(ctx context.Context, scanID string, filter EndpointListFilter, opt EndpointInventoryOptions, page EndpointListPageOptions) (EndpointListPage, error)
 }

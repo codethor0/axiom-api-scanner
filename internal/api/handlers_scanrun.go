@@ -36,7 +36,7 @@ func (h *Handler) scanRunStatus(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not load scan")
 		return
 	}
-	endpoints, err := h.Endpoints.ListScanEndpoints(r.Context(), id, storage.EndpointListFilter{})
+	endpoints, err := h.Endpoints.ListScanEndpointsForRunStatus(r.Context(), id, storage.EndpointListFilter{})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", "could not list endpoints")
 		return

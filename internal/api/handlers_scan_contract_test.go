@@ -40,6 +40,45 @@ var scanRunStatusNestedKeys = map[string][]string{
 	},
 }
 
+func assertScanRunStatusSummaryProgressFindings(t *testing.T, body []byte) {
+	t.Helper()
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(body, &top); err != nil {
+		t.Fatal(err)
+	}
+	var prog ScanRunProgress
+	if err := json.Unmarshal(top["progress"], &prog); err != nil {
+		t.Fatal(err)
+	}
+	var summ ScanRunReadSummary
+	if err := json.Unmarshal(top["summary"], &summ); err != nil {
+		t.Fatal(err)
+	}
+	var fsRaw map[string]json.RawMessage
+	if err := json.Unmarshal(top["findings_summary"], &fsRaw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fsRaw["total"]; !ok {
+		t.Fatalf("findings_summary missing total: %s", string(top["findings_summary"]))
+	}
+	if summ.EndpointsImported != prog.EndpointsDiscovered {
+		t.Fatalf("summary.endpoints_imported %d vs progress.endpoints_discovered %d", summ.EndpointsImported, prog.EndpointsDiscovered)
+	}
+	if _, ok := top["findings_summary"]; !ok {
+		t.Fatal("missing findings_summary")
+	}
+	// Canonical nested keys for operator read models (presence, not business rules).
+	var baseKeys map[string]json.RawMessage
+	if err := json.Unmarshal(top["summary"], &baseKeys); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"endpoints_imported", "baseline", "mutation", "findings_created"} {
+		if _, ok := baseKeys[k]; !ok {
+			t.Fatalf("summary missing %q", k)
+		}
+	}
+}
+
 func assertScanRunStatusWireShape(t *testing.T, body []byte) {
 	t.Helper()
 	var top map[string]json.RawMessage
@@ -114,6 +153,62 @@ func TestScanRunStatus_wireShape_successfulRun(t *testing.T) {
 	}
 	if len(st.Diagnostics.ConsistencyDetail) != 0 {
 		t.Fatalf("expected no consistency drift, got %+v", st.Diagnostics.ConsistencyDetail)
+	}
+	assertScanRunStatusSummaryProgressFindings(t, body)
+}
+
+func TestContract_endpointList_summaryCountsMatchPersistedExecutions(t *testing.T) {
+	mem := newMemRepositories()
+	ctx := context.Background()
+	scan, err := mem.CreateScan(ctx, storage.CreateScanInput{TargetLabel: "t", SafetyMode: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerr := mem.ReplaceScanEndpoints(ctx, scan.ID, []engine.EndpointSpec{{Method: "GET", Path: "/x"}}); rerr != nil {
+		t.Fatal(rerr)
+	}
+	eps, err := mem.ListScanEndpoints(ctx, scan.ID, storage.EndpointListFilter{})
+	if err != nil || len(eps) != 1 {
+		t.Fatal(eps, err)
+	}
+	epID := eps[0].ID
+	if _, ierr := mem.InsertExecutionRecord(ctx, engine.ExecutionRecord{
+		ScanID: scan.ID, ScanEndpointID: epID, Phase: engine.PhaseBaseline,
+		RequestMethod: "GET", RequestURL: "http://x/x", ResponseStatus: 200,
+	}); ierr != nil {
+		t.Fatal(ierr)
+	}
+	if _, ierr := mem.InsertExecutionRecord(ctx, engine.ExecutionRecord{
+		ScanID: scan.ID, ScanEndpointID: epID, Phase: engine.PhaseMutated, RuleID: "r",
+		RequestMethod: "GET", RequestURL: "http://x/x", ResponseStatus: 200,
+	}); ierr != nil {
+		t.Fatal(ierr)
+	}
+	if _, ferr := mem.CreateFinding(ctx, storage.CreateFindingInput{
+		ScanID: scan.ID, RuleID: "r", Category: "c", Severity: findings.SeverityLow,
+		AssessmentTier: "tentative", Summary: "s", ScanEndpointID: epID,
+		BaselineExecutionID: "b", MutatedExecutionID: "m", Evidence: storage.CreateEvidenceInput{},
+	}); ferr != nil {
+		t.Fatal(ferr)
+	}
+	srv := httptest.NewServer(testHandler(mem).Routes())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/v1/scans/" + scan.ID + "/endpoints?limit=10&include_summary=true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var env EndpointListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Items) != 1 || env.Items[0].Summary == nil {
+		t.Fatalf("%+v", env)
+	}
+	if env.Items[0].Summary.BaselineExecutionsRecorded != 1 ||
+		env.Items[0].Summary.MutationExecutionsRecorded != 1 ||
+		env.Items[0].Summary.FindingsRecorded != 1 {
+		t.Fatalf("%+v", env.Items[0].Summary)
 	}
 }
 

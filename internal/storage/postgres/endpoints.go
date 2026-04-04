@@ -97,6 +97,43 @@ ORDER BY se.path_template ASC, se.method ASC, se.id ASC`
 	return list, rows.Err()
 }
 
+// ListScanEndpointsForRunStatus loads planner and protected-route fields only (no request/response content-type JSON).
+func (s *Store) ListScanEndpointsForRunStatus(ctx context.Context, scanID string, filter storage.EndpointListFilter) ([]engine.ScanEndpoint, error) {
+	andFrag, fargs := endpointListAndClause(filter, 2)
+	q := `
+SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
+       se.security_scheme_hints::text, se.request_body_json, se.created_at
+FROM scan_endpoints se WHERE se.scan_id = $1` + andFrag + `
+ORDER BY se.path_template ASC, se.method ASC, se.id ASC`
+	args := append([]any{scanID}, fargs...)
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list endpoints for run status: %w", err)
+	}
+	defer rows.Close()
+
+	var list []engine.ScanEndpoint
+	for rows.Next() {
+		var e engine.ScanEndpoint
+		var hints string
+		if err := rows.Scan(
+			&e.ID,
+			&e.ScanID,
+			&e.Method,
+			&e.PathTemplate,
+			&e.OperationID,
+			&hints,
+			&e.RequestBodyJSON,
+			&e.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(hints), &e.SecuritySchemeHints)
+		list = append(list, e)
+	}
+	return list, rows.Err()
+}
+
 // ListEndpointInventoryPage returns one page of endpoint inventory using opaque keyset cursors (same family as executions/findings lists).
 func (s *Store) ListEndpointInventoryPage(ctx context.Context, scanID string, filter storage.EndpointListFilter, opt storage.EndpointInventoryOptions, opts storage.EndpointListPageOptions) (storage.EndpointListPage, error) {
 	if opts.Limit <= 0 {
@@ -122,22 +159,7 @@ func (s *Store) ListEndpointInventoryPage(ctx context.Context, scanID string, fi
 
 	var baseQ string
 	if opt.IncludeSummary {
-		baseQ = `
-WITH b AS (
-  SELECT scan_endpoint_id, COUNT(*)::int AS n FROM execution_records
-  WHERE scan_id = $1 AND phase = 'baseline' AND scan_endpoint_id IS NOT NULL
-  GROUP BY scan_endpoint_id
-),
-m AS (
-  SELECT scan_endpoint_id, COUNT(*)::int AS n FROM execution_records
-  WHERE scan_id = $1 AND phase = 'mutated' AND scan_endpoint_id IS NOT NULL
-  GROUP BY scan_endpoint_id
-),
-f AS (
-  SELECT scan_endpoint_id, COUNT(*)::int AS n FROM findings
-  WHERE scan_id = $1 AND scan_endpoint_id IS NOT NULL
-  GROUP BY scan_endpoint_id
-)
+		baseQ = endpointInventoryExecFindingCTEs + `
 SELECT se.id, se.scan_id, se.method, se.path_template, se.operation_id,
        se.security_scheme_hints::text, se.request_content_types::text, se.response_content_types::text,
        se.request_body_json, se.created_at,
