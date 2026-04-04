@@ -23,6 +23,17 @@ assert_operator_guide_shape() {
     (.operator_guide.linkage_narration | type == "string" and length > 0) and
     (.operator_guide.summaries_mirror_redacted_snapshots | type == "string" and length > 0) and
     (.operator_guide.phase_execution_kind_alignment | type == "string" and length > 0) and
-    (.operator_guide.summaries_list_detail_parity | type == "string" and length > 0)
+    (.operator_guide.summaries_list_detail_parity | type == "string" and length > 0) and
+    (.operator_guide.cross_phase_filter_hint | type == "string" and length > 0)
+  ' >/dev/null
+}
+
+# When both execution ids are present on a finding, evidence_comparison_guide must be non-empty (actionable GET paths).
+assert_finding_evidence_comparison_when_paired() {
+  local detail_json="$1"
+  echo "$detail_json" | jq -e '
+    if ((.baseline_execution_id // "") | length > 0) and ((.mutated_execution_id // "") | length > 0)
+    then (.evidence_comparison_guide | type == "string" and length > 40)
+    else true end
   ' >/dev/null
 }

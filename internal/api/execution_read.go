@@ -14,13 +14,13 @@ const executionURLShortMax = 120
 // (no request/response body or header maps). GET .../executions/{id} returns the full ExecutionRead.
 // mutation_rule_id is empty for baseline rows; list filters accept rule_id or mutation_rule_id (same semantics).
 type ExecutionListItem struct {
-	ID              string `json:"id"`
-	ScanID          string `json:"scan_id"`
-	ScanEndpointID  string `json:"scan_endpoint_id,omitempty"`
-	Phase           string `json:"phase"`
-	ExecutionKind   string `json:"execution_kind"`
-	MutationRuleID  string `json:"mutation_rule_id,omitempty"`
-	CandidateKey    string `json:"candidate_key,omitempty"`
+	ID              string                   `json:"id"`
+	ScanID          string                   `json:"scan_id"`
+	ScanEndpointID  string                   `json:"scan_endpoint_id,omitempty"`
+	Phase           string                   `json:"phase"`
+	ExecutionKind   string                   `json:"execution_kind"`
+	MutationRuleID  string                   `json:"mutation_rule_id,omitempty"`
+	CandidateKey    string                   `json:"candidate_key,omitempty"`
 	RequestSummary  ExecutionRequestSummary  `json:"request_summary"`
 	ResponseSummary ExecutionResponseSummary `json:"response_summary"`
 	DurationMs      int64                    `json:"duration_ms"`
@@ -61,7 +61,9 @@ type ExecutionOperatorGuide struct {
 	SummariesMirrorRedactedSnapshots string `json:"summaries_mirror_redacted_snapshots"`
 	// PhaseExecutionKindAlignment and SummariesListDetailParity are stable strings for comparing list vs detail and redundant top-level phase fields.
 	PhaseExecutionKindAlignment string `json:"phase_execution_kind_alignment"`
-	SummariesListDetailParity     string `json:"summaries_list_detail_parity"`
+	SummariesListDetailParity   string `json:"summaries_list_detail_parity"`
+	// CrossPhaseFilterHint explains how to list the other phase for the same imported endpoint without a second execution id on this row.
+	CrossPhaseFilterHint string `json:"cross_phase_filter_hint"`
 }
 
 const executionSummariesMirrorNote = "request_summary and response_summary repeat the same persisted request/response fields (method, shortened URL, header/body counts and lengths, status, content-type); they do not add HTTP material beyond those redacted snapshots."
@@ -69,6 +71,8 @@ const executionSummariesMirrorNote = "request_summary and response_summary repea
 const executionPhaseExecutionKindAlignment = "phase and execution_kind are identical on this API; both label baseline (pre-mutation exchange) versus mutated (post-mutation replay)."
 
 const executionSummariesListDetailParity = "request_summary and response_summary on this object match the GET .../executions list row for the same execution id (same redaction and derivation)."
+
+const executionCrossPhaseFilterHint = "To pair baseline vs mutated exchanges for the same imported operation, call GET .../executions?scan_endpoint_id=<this row's scan_endpoint_id> (optionally filter phase) and compare baseline rows to mutated rows for that endpoint."
 
 func executionPhaseRole(phase string) string {
 	switch strings.ToLower(strings.TrimSpace(phase)) {
@@ -109,6 +113,7 @@ func newExecutionOperatorGuide(r engine.ExecutionRecord) *ExecutionOperatorGuide
 		SummariesMirrorRedactedSnapshots: executionSummariesMirrorNote,
 		PhaseExecutionKindAlignment:      executionPhaseExecutionKindAlignment,
 		SummariesListDetailParity:        executionSummariesListDetailParity,
+		CrossPhaseFilterHint:             executionCrossPhaseFilterHint,
 	}
 }
 

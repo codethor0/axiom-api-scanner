@@ -103,6 +103,50 @@ func TestNewFindingRead_fillsExecutionIDsFromEvidenceSummary(t *testing.T) {
 	}
 }
 
+func TestNewFindingRead_evidenceComparisonGuide_whenPaired(t *testing.T) {
+	f := findings.Finding{
+		ID:                    "fid",
+		ScanID:                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		RuleID:                "r",
+		Category:              "c",
+		Severity:              findings.SeverityLow,
+		Summary:               "s",
+		EvidenceURI:           "/e",
+		BaselineExecutionID:   "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+		MutatedExecutionID:    "cccccccc-cccc-cccc-cccc-cccccccccccc",
+	}
+	r := NewFindingRead(f)
+	g := r.EvidenceComparisonGuide
+	if g == "" || !strings.Contains(g, f.ScanID) || !strings.Contains(g, f.BaselineExecutionID) ||
+		!strings.Contains(g, f.MutatedExecutionID) || !strings.Contains(g, "matcher_outcomes") {
+		t.Fatalf("%q", g)
+	}
+}
+
+func TestNewFindingRead_evidenceComparisonGuide_omittedWhenIncomplete(t *testing.T) {
+	f := findings.Finding{
+		ID:                  "fid",
+		ScanID:              "sid",
+		RuleID:              "r",
+		Category:            "c",
+		Severity:            findings.SeverityLow,
+		Summary:             "s",
+		EvidenceURI:         "/e",
+		BaselineExecutionID: "only-base",
+	}
+	r := NewFindingRead(f)
+	if r.EvidenceComparisonGuide != "" {
+		t.Fatal(r.EvidenceComparisonGuide)
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"evidence_comparison_guide"`) {
+		t.Fatalf("%s", raw)
+	}
+}
+
 func TestFindingRead_readTrustLegendWireKeysMatchProofScripts(t *testing.T) {
 	f := findings.Finding{
 		ID: "550e8400-e29b-41d4-a716-446655440000", ScanID: "660e8400-e29b-41d4-a716-446655440001",

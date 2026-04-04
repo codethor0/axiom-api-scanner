@@ -67,24 +67,26 @@ type FindingListItem struct {
 //   - evidence_summary: opaque persisted JSON (schema_version + matcher/diff payload); use evidence_inspection for a stable subset without re-parsing.
 //   - operator_assessment: optional read-model hints (tier gloss, notes/hints mirrored from evidence_summary) so clients need not parse JSON for axis meaning; severity/confidence/tier stay top-level.
 //   - read_trust_legend: stable glossary strings (detail-only) mapping each orthogonal/derived block to its role; does not repeat row values or tier-specific sentences (those stay in operator_assessment when present).
+//   - evidence_comparison_guide: optional one-line pointer to baseline vs mutated execution GETs when both ids are known (scan-scoped paths); complements evidence_inspection.matcher_outcomes (what matched) without duplicating id-only top-level fields.
 type FindingRead struct {
-	ID                     string                     `json:"id"`
-	ScanID                 string                     `json:"scan_id"`
-	RuleID                 string                     `json:"rule_id"`
-	Category               string                     `json:"category"`
-	Severity               findings.Severity          `json:"severity"`
-	RuleDeclaredConfidence string                     `json:"rule_declared_confidence"`
-	AssessmentTier         string                     `json:"assessment_tier"`
-	Summary                string                     `json:"summary"`
-	EvidenceSummary        json.RawMessage            `json:"evidence_summary,omitempty"`
-	EvidenceURI            string                     `json:"evidence_uri"`
-	ScanEndpointID         string                     `json:"scan_endpoint_id,omitempty"`
-	BaselineExecutionID    string                     `json:"baseline_execution_id,omitempty"`
-	MutatedExecutionID     string                     `json:"mutated_execution_id,omitempty"`
-	CreatedAt              time.Time                  `json:"created_at"`
-	EvidenceInspection     *FindingEvidenceInspection `json:"evidence_inspection,omitempty"`
-	OperatorAssessment     *FindingOperatorAssessment `json:"operator_assessment,omitempty"`
-	ReadTrustLegend        FindingReadTrustLegend     `json:"read_trust_legend"`
+	ID                      string                     `json:"id"`
+	ScanID                  string                     `json:"scan_id"`
+	RuleID                  string                     `json:"rule_id"`
+	Category                string                     `json:"category"`
+	Severity                findings.Severity          `json:"severity"`
+	RuleDeclaredConfidence  string                     `json:"rule_declared_confidence"`
+	AssessmentTier          string                     `json:"assessment_tier"`
+	Summary                 string                     `json:"summary"`
+	EvidenceSummary         json.RawMessage            `json:"evidence_summary,omitempty"`
+	EvidenceURI             string                     `json:"evidence_uri"`
+	ScanEndpointID          string                     `json:"scan_endpoint_id,omitempty"`
+	BaselineExecutionID     string                     `json:"baseline_execution_id,omitempty"`
+	MutatedExecutionID      string                     `json:"mutated_execution_id,omitempty"`
+	CreatedAt               time.Time                  `json:"created_at"`
+	EvidenceInspection      *FindingEvidenceInspection `json:"evidence_inspection,omitempty"`
+	OperatorAssessment      *FindingOperatorAssessment `json:"operator_assessment,omitempty"`
+	ReadTrustLegend         FindingReadTrustLegend     `json:"read_trust_legend"`
+	EvidenceComparisonGuide string                     `json:"evidence_comparison_guide,omitempty"`
 }
 
 // FindingReadTrustLegend explains how top-level axes and derived JSON blocks relate (constant copy on every detail response).
@@ -103,7 +105,7 @@ var findingReadTrustLegend = FindingReadTrustLegend{
 	RuleDeclaredConfidence: "Signal from rule YAML confidence (high/medium/low); describes pack/authoring quality, not post-run proof or tier.",
 	AssessmentTier:         "Post-run evidence sufficiency (confirmed/tentative/incomplete) for this row; for the tier-specific gloss see operator_assessment.evidence_sufficiency_guide when that object is present.",
 	EvidenceSummary:        "Opaque persisted matcher/diff JSON (schema_version, outcomes, diff points, mirrored axes); authoritative structured evidence; evidence_inspection is a derived, stable subset.",
-	EvidenceInspection:     "Derived inspection view: merged baseline/mutated execution ids, sorted matcher outcome lines, diff point count—no substitute for the full evidence_summary when debugging.",
+	EvidenceInspection:     "Derived inspection: matcher_outcomes lists each rule matcher (kind, passed) evaluated on the stored baseline vs mutated diff; diff_point_count counts normalized diff cues; execution ids here match the row—full HTTP is on the execution GETs named in evidence_comparison_guide when that field is present.",
 	OperatorAssessment:     "When present: row-level tier gloss plus assessment_note_codes and scanner_policy_hints mirrored from evidence_summary; optional and does not restate top-level severity or confidence string values.",
 }
 
@@ -145,6 +147,18 @@ func parseFindingOperatorAssessment(f findings.Finding) *FindingOperatorAssessme
 		AssessmentNoteCodes:      notes,
 		ScannerPolicyHints:       hints,
 	}
+}
+
+func findingEvidenceComparisonGuide(scanID, baselineExecID, mutatedExecID string) string {
+	scanID = strings.TrimSpace(scanID)
+	baselineExecID = strings.TrimSpace(baselineExecID)
+	mutatedExecID = strings.TrimSpace(mutatedExecID)
+	if scanID == "" || baselineExecID == "" || mutatedExecID == "" {
+		return ""
+	}
+	return "Matchers evaluated the diff between baseline execution " + baselineExecID + " and mutated execution " + mutatedExecID +
+		". Full redacted HTTP: GET /v1/scans/" + scanID + "/executions/" + baselineExecID + " (baseline) and GET /v1/scans/" + scanID +
+		"/executions/" + mutatedExecID + " (mutated). evidence_inspection.matcher_outcomes shows which matchers passed."
 }
 
 func mergedFindingExecutionIDs(f findings.Finding) (baselineID, mutatedID string) {
@@ -263,22 +277,23 @@ func NewFindingListItem(f findings.Finding) FindingListItem {
 func NewFindingRead(f findings.Finding) FindingRead {
 	baseID, mutID := mergedFindingExecutionIDs(f)
 	return FindingRead{
-		ID:                     f.ID,
-		ScanID:                 f.ScanID,
-		RuleID:                 f.RuleID,
-		Category:               f.Category,
-		Severity:               f.Severity,
-		RuleDeclaredConfidence: strings.TrimSpace(f.RuleDeclaredConfidence),
-		AssessmentTier:         strings.TrimSpace(f.AssessmentTier),
-		Summary:                f.Summary,
-		EvidenceSummary:        f.EvidenceSummary,
-		EvidenceURI:            f.EvidenceURI,
-		ScanEndpointID:         f.ScanEndpointID,
-		BaselineExecutionID:    baseID,
-		MutatedExecutionID:     mutID,
-		CreatedAt:              f.CreatedAt,
-		EvidenceInspection:     parseFindingEvidenceInspection(f),
-		OperatorAssessment:     parseFindingOperatorAssessment(f),
-		ReadTrustLegend:        findingReadTrustLegend,
+		ID:                      f.ID,
+		ScanID:                  f.ScanID,
+		RuleID:                  f.RuleID,
+		Category:                f.Category,
+		Severity:                f.Severity,
+		RuleDeclaredConfidence:  strings.TrimSpace(f.RuleDeclaredConfidence),
+		AssessmentTier:          strings.TrimSpace(f.AssessmentTier),
+		Summary:                 f.Summary,
+		EvidenceSummary:         f.EvidenceSummary,
+		EvidenceURI:             f.EvidenceURI,
+		ScanEndpointID:          f.ScanEndpointID,
+		BaselineExecutionID:     baseID,
+		MutatedExecutionID:      mutID,
+		CreatedAt:               f.CreatedAt,
+		EvidenceInspection:      parseFindingEvidenceInspection(f),
+		OperatorAssessment:      parseFindingOperatorAssessment(f),
+		ReadTrustLegend:         findingReadTrustLegend,
+		EvidenceComparisonGuide: findingEvidenceComparisonGuide(f.ScanID, baseID, mutID),
 	}
 }

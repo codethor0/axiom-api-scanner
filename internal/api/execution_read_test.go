@@ -75,6 +75,9 @@ func TestNewExecutionRead_summariesAndKind(t *testing.T) {
 	if !strings.Contains(g.PhaseExecutionKindAlignment, "execution_kind") {
 		t.Fatalf("phase/kind gloss %+v", g)
 	}
+	if g.CrossPhaseFilterHint == "" || !strings.Contains(g.CrossPhaseFilterHint, "scan_endpoint_id") {
+		t.Fatalf("cross_phase_filter_hint %+v", g)
+	}
 }
 
 func TestNewExecutionRead_operatorGuide_baselineRole(t *testing.T) {

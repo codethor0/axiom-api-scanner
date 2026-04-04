@@ -284,6 +284,7 @@ F0="$(echo "$FINDINGS" | jq '.items[0]')"
 FID="$(echo "$F0" | jq -er .id)"
 FGET="$(curl -sf "$AXIOM_URL/v1/findings/$FID")"
 assert_read_trust_legend_shape "$FGET"
+assert_finding_evidence_comparison_when_paired "$FGET"
 MEXEC="$(echo "$FGET" | jq -er '.mutated_execution_id // .evidence_summary.mutated_execution_id // empty')"
 if [[ -z "$MEXEC" ]]; then
   echo "benchmark failed: could not resolve mutated_execution_id from finding detail" >&2
@@ -355,6 +356,7 @@ assert_bench_harness_row "$BENCH_TARGET_STUB" "$FID_RL" "$BENCH_CODES_STUB_RATE_
 assert_confirmed_evidence_no_interpretation_hints "$FID_RL"
 RL_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_RL")"
 assert_read_trust_legend_shape "$RL_DETAIL"
+assert_finding_evidence_comparison_when_paired "$RL_DETAIL"
 echo "$RL_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
 FID_PATHSTUB="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')"
 assert_bench_harness_row "$BENCH_TARGET_STUB" "$FID_PATHSTUB" "$BENCH_CODES_STUB_PATHNORM_TENTATIVE"

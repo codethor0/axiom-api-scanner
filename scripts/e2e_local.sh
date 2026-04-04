@@ -173,6 +173,7 @@ if [[ "$FIRST_LEN" -ge 1 ]]; then
     (.evidence_inspection != null)
   ' >/dev/null
   assert_read_trust_legend_shape "$FDETAIL"
+  assert_finding_evidence_comparison_when_paired "$FDETAIL"
   curl -sf "$AXIOM_URL/v1/findings/$FID/evidence" | jq -e .finding_id >/dev/null
   SE_ID="$(echo "$FINDINGS_JSON" | jq -r '.items[0].scan_endpoint_id // empty')"
   if [[ -n "$SE_ID" ]]; then

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/codethor0/axiom-api-scanner/internal/engine"
@@ -23,6 +24,7 @@ var executionReadRequired = []string{
 var executionOperatorGuideKeys = []string{
 	"phase_role", "linkage_narration", "summaries_mirror_redacted_snapshots",
 	"phase_execution_kind_alignment", "summaries_list_detail_parity",
+	"cross_phase_filter_hint",
 }
 
 var findingReadTrustLegendKeys = []string{
@@ -262,6 +264,17 @@ func TestContract_findingReadAndEvidence_wireKeys(t *testing.T) {
 	}
 	if _, hasInsp := ftop["evidence_inspection"]; !hasInsp {
 		t.Fatal("expected evidence_inspection on finding read")
+	}
+	rawECG, hasECG := ftop["evidence_comparison_guide"]
+	if !hasECG {
+		t.Fatal("expected evidence_comparison_guide when baseline and mutated execution ids are set")
+	}
+	var ecg string
+	if uerr := json.Unmarshal(rawECG, &ecg); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if ecg == "" || !strings.Contains(ecg, scan.ID) || !strings.Contains(ecg, "b1") || !strings.Contains(ecg, "m1") {
+		t.Fatalf("evidence_comparison_guide %q", ecg)
 	}
 	rawEv, ok := ftop["evidence_summary"]
 	if !ok {
