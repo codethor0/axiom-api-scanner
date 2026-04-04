@@ -5,6 +5,8 @@ title: '[feature] '
 labels: ''
 ---
 
+**False positive, false negative, or “API returns wrong data”?** Use **[Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md)**. **`docker pull` / image only?** Use **[Docker / GHCR](https://github.com/codethor0/axiom-api-scanner/issues/new?template=docker_ghcr.md)**. Routing table: [CONTRIBUTING — Issue triage](https://github.com/codethor0/axiom-api-scanner/blob/main/CONTRIBUTING.md#issue-triage--pick-one-template).
+
 ## Problem / use case
 
 What workflow or integration is hard today? If this is **coverage** (auth scheme, spec format, deployment shape), say so explicitly.

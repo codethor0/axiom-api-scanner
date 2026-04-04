@@ -9,3 +9,6 @@ contact_links:
   - name: External validation (README)
     url: https://github.com/codethor0/axiom-api-scanner/blob/main/README.md#proof-at-a-glance-three-separate-surfaces
     about: Shortest paths — CI, clone+benchmark, or GHCR clean-machine curl.
+  - name: Which issue template?
+    url: https://github.com/codethor0/axiom-api-scanner/blob/main/CONTRIBUTING.md#issue-triage--pick-one-template
+    about: FP, FN, setup, auth/spec, GHCR — pick one lane before filing.

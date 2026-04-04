@@ -66,6 +66,19 @@ Use Docker + **curl** only: pull **`ghcr.io/codethor0/axiom-api-scanner`** (tag 
 
 [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-issues-after-external-validation) — use **Docker / GHCR** template for registry/pull issues; **Bug report** for false positives/negatives and auth/spec friction.
 
+## Which GitHub issue template should I use?
+
+Use **one** primary lane ([full table](https://github.com/codethor0/axiom-api-scanner/blob/main/CONTRIBUTING.md#issue-triage--pick-one-template)):
+
+| You have | Template |
+| --- | --- |
+| Wrong or noisy finding | Bug report (`fp:`) |
+| Missed abuse you expected | Bug report (`fn:`) |
+| Cannot install or run from docs | Bug report (`setup:`) |
+| Auth or OpenAPI shape not handled | Bug report (coverage) or Feature request |
+| `docker pull` / arch / manifest / image crash | **Docker / GHCR** only |
+| Product direction, not one bug | Feature request |
+
 ## Why did my Docker proof fail with “address already in use”?
 
 `e2e-local` and `benchmark-findings-local` both default to API on **8080**. Run them one after another, use `make release-candidate-proof`, or override `AXIOM_HTTP_ADDR` / `AXIOM_URL` per [testing.md](testing.md#proof-matrix-ci-vs-local-vs-environment).

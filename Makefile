@@ -12,6 +12,7 @@ MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrat
 help:
 	@echo "Axiom Makefile (run from repo root). See docs/testing.md and README.md."
 	@echo "  External smoke (no clone): README.md ## Clean machine validation (GHCR)."
+	@echo "  Issue triage: CONTRIBUTING.md ## Issue triage — pick one template."
 	@echo "  make help                      Show this list."
 	@echo "  make ci-unit                   check-migrations + vet + lint + go test (postgres tests skip if AXIOM_TEST_DATABASE_URL unset)."
 	@echo "  make ci                        Like CI workflow: requires AXIOM_TEST_DATABASE_URL for go test."

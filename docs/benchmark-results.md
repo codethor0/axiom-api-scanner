@@ -2,6 +2,19 @@
 
 This document records **what the local benchmark proves** for the **current** safe V1 surface. It is **not** a head-to-head run against ZAP, Burp, StackHawk, or 42Crunch (those require separate methodology and permissions). For **category positioning**, see [comparison.md](comparison.md).
 
+## This file does **not** prove (visibility first)
+
+**Skip this section at your own risk when interpreting results.**
+
+| Does **not** prove | Where to look instead |
+| --- | --- |
+| Anything about **your** production API, auth, or gateways | Run your own authorized tests; file [issues](https://github.com/codethor0/axiom-api-scanner/blob/main/CONTRIBUTING.md#issue-triage--pick-one-template) with repro |
+| That **CI** ran this benchmark | [Three layers](#three-layers-of-proof-read-this-first) — Actions runs **`go test`**, not `make benchmark-findings-local` |
+| That the **GHCR image** is healthy | [README — Clean machine](https://github.com/codethor0/axiom-api-scanner/blob/main/README.md#clean-machine-validation-ghcr) (`curl /v1/rules`) |
+| Competitive ranking or **superiority** vs other scanners | This repo asserts **Axiom-only** regression outcomes; see [comparison.md](comparison.md#what-this-document-does-not-prove-read-first) |
+
+The sections **What this benchmark proves** and **Does not prove** below repeat the same limits in detail.
+
 ## Three layers of proof (read this first)
 
 | Layer | Where it runs | Role |

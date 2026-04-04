@@ -44,11 +44,36 @@ make docker-api-smoke
 
 Full **release-candidate** recipe: `make release-candidate-proof` (see [docs/testing.md](docs/testing.md)). Expected **benchmark** rows per V1 family: [docs/benchmark-results.md](docs/benchmark-results.md). Touching **`Dockerfile`**, **`scripts/docker_api_smoke.sh`**, or **`.github/workflows/container-publish.yml`**: run **`make docker-api-smoke`** before opening a PR when possible; optionally **`make docker-api-smoke-ghcr`** if a published tag exists and you have pull access.
 
+## Issue triage — pick **one** template
+
+Use **one** primary category so labels and first response stay fast. If two apply (e.g. setup friction **and** false positive), pick the **blocking** one first and mention the other in the body.
+
+| Your situation | Open this template | Title prefix (suggested) |
+| --- | --- | --- |
+| Finding is wrong, noisy, or misleading | [Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md) | `fp:` or `[bug]` |
+| Expected abuse class not detected | [Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md) | `fn:` or `[bug]` |
+| Install, clone, ports, docs — **cannot** get to a working API | [Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md) | `setup:` |
+| Auth scheme, header, or OpenAPI shape **unsupported or undocumented** for your case | [Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md) (coverage gap) or [Feature request](https://github.com/codethor0/axiom-api-scanner/issues/new?template=feature_request.md) if it is a conscious product ask | `auth:` / `openapi:` |
+| `docker pull`, manifest, arch mismatch, registry login, image starts but API unhealthy | **[Docker / GHCR image](https://github.com/codethor0/axiom-api-scanner/issues/new?template=docker_ghcr.md)** only | `[dist]` |
+| Broader roadmap / integration idea (not one broken behavior) | [Feature request](https://github.com/codethor0/axiom-api-scanner/issues/new?template=feature_request.md) | `[feature]` |
+
+**Do not** use **Bug report** for pure registry/pull problems — use **Docker / GHCR** so distribution issues stay in one lane.
+
+**Proof to attach (minimum):**
+
+| Category | Attach |
+| --- | --- |
+| False positive | Rule id (`rule_id`), finding id or **redacted** JSON excerpt, one sentence why it is wrong or noisy |
+| False negative | V1 family or abuse class you expected, what you ran (API calls or Makefile target), **redacted** path/method or OpenAPI snippet |
+| Setup friction | Exact commands, **full** error text, OS/CPU, commit or image tag |
+| Auth / input gap | Auth scheme (e.g. bearer, API key header name), **redacted** OpenAPI fragment or request shape |
+| GHCR / image | Image ref, `docker version`, host OS/CPU, pull or run error line — see template |
+
 ## Reporting issues
 
 - Use GitHub Issues on [codethor0/axiom-api-scanner](https://github.com/codethor0/axiom-api-scanner).
-- **Especially useful for RC traction:** **false positives** (noisy or misleading findings), **false negatives** (missed abuse class you expected), **setup friction** (install, Docker, ports, docs gaps), **auth or OpenAPI input coverage** you need but do not see documented, and **Docker/GHCR** pull, manifest, or runtime issues.
-- Include: Go version (if you built from source), OS, commit or tag or **image tag** (`v0.1.0-rc.1`, `latest`, `sha-…`), repro steps, expected vs actual behavior, and whether you ran **`make ci-unit`**, **`make e2e-local`**, **`make benchmark-findings-local`**, or **[clean-machine GHCR](https://github.com/codethor0/axiom-api-scanner/blob/main/README.md#clean-machine-validation-ghcr)** when relevant.
+- **Especially useful for RC traction:** **false positives**, **false negatives**, **setup friction**, **auth or OpenAPI input coverage**, and **Docker/GHCR** issues — see the table above.
+- Always include: **version** (commit, `v*`, tag, or **`latest`/`sha-*`** image), OS/arch, repro steps, expected vs actual, and **which proof** you ran (`ci-unit`, clean-machine, `e2e-local`, benchmark, etc.).
 - **Security-sensitive** reports: see [SECURITY.md](SECURITY.md).
 - **Context:** [docs/faq.md](docs/faq.md), [docs/announcement.md](docs/announcement.md).
 
@@ -57,11 +82,11 @@ Full **release-candidate** recipe: `make release-candidate-proof` (see [docs/tes
 If you **did not clone** the repo and only ran the **published image**:
 
 1. Follow the **Clean machine validation** steps in [README.md](README.md#clean-machine-validation-ghcr) (or report exactly where you diverged).
-2. Open **[Docker / GHCR image](https://github.com/codethor0/axiom-api-scanner/issues/new?template=docker_ghcr.md)** for pull/manifest/arch/registry/login problems.
-3. Open **[Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md)** for **false positives**, **false negatives**, **setup friction** not specific to the registry image, or **auth/spec** gaps — check the feedback-type boxes so maintainers can triage quickly.
-4. Open **[Feature request](https://github.com/codethor0/axiom-api-scanner/issues/new?template=feature_request.md)** for product or doc gaps that are not a single broken behavior.
+2. **Registry or container only:** [Docker / GHCR image](https://github.com/codethor0/axiom-api-scanner/issues/new?template=docker_ghcr.md).
+3. **Scanner behavior** after the API works: [Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md) — check **one** primary feedback type.
+4. **Roadmap / design ask:** [Feature request](https://github.com/codethor0/axiom-api-scanner/issues/new?template=feature_request.md).
 
-**CI vs local vs image:** three separate proofs — see [README.md](README.md#proof-at-a-glance-three-separate-surfaces) and [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment).
+**CI vs runtime:** green **CI** on GitHub is **not** Docker e2e, benchmark, or a GHCR pull. See [README.md](README.md#proof-at-a-glance-three-separate-surfaces) and [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment).
 
 ## Pull requests
 

@@ -16,7 +16,16 @@ These are **independent**. Trust **all three** only if each one matches what you
 
 **Outsider path (shortest):** pull image, start Postgres on a Docker network, run the container with `DATABASE_URL`, then **`curl -sf http://127.0.0.1:8080/v1/rules`**. Full copy-paste: [Clean machine validation](#clean-machine-validation-ghcr).
 
-**After that:** if anything fails or misleads, file a focused issue — [CONTRIBUTING.md](CONTRIBUTING.md#reporting-issues-after-external-validation) (points to templates).
+## Validate, then report (two outsider paths)
+
+**CI on GitHub** shows **`go test`**, lint, and migration checks only — it does **not** run the benchmark, e2e stack, or your **`docker pull`**. For **runtime** confidence, use **A** or **B** below, then **C** if something is wrong.
+
+| Step | **A — GHCR (no clone)** | **B — Source (clone)** |
+| --- | --- | --- |
+| **Validate** | [Clean machine validation](#clean-machine-validation-ghcr): pull image, Postgres, **`curl /v1/rules`** | `git clone` → `make release-candidate-proof` (or `make e2e-local` then `make benchmark-findings-local`) — [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment) |
+| **Proves** | Published image boots and serves the API | Fixtures + V1 benchmark matrix match [docs/benchmark-results.md](docs/benchmark-results.md) |
+
+**C — File the right issue:** [CONTRIBUTING — Issue triage](CONTRIBUTING.md#issue-triage--pick-one-template) (false positive, false negative, setup, auth/spec, or **Docker/GHCR** only). Shortest routing: registry problems → **Docker / GHCR** template; scanner behavior → **Bug report**.
 
 ## First evaluation (about 5–10 minutes)
 
@@ -160,7 +169,10 @@ Shortest **external** check that the **published API image** runs (no git clone;
 
 ### After clean-machine validation
 
-If the steps above **failed** (pull, multi-arch, startup, migrations, `curl`) or **passed** but you hit confusing packaging behavior, open a GitHub issue using **[Docker / GHCR image](https://github.com/codethor0/axiom-api-scanner/issues/new?template=docker_ghcr.md)** or **[Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md)**. Include **image tag** (e.g. `latest` or `sha-…`), **host OS/CPU**, **`docker version`**, redacted `DATABASE_URL` shape (no passwords), and the **exact** `curl`/HTTP error. For scanner **false positives/negatives** or **auth/spec gaps** after you use the API on a real target, use **Bug report** and check the matching feedback boxes — see [CONTRIBUTING.md](CONTRIBUTING.md#reporting-issues-after-external-validation).
+- **Pull, manifest, arch, login, container health:** **[Docker / GHCR image](https://github.com/codethor0/axiom-api-scanner/issues/new?template=docker_ghcr.md)** — not Bug report.
+- **API works but findings or behavior look wrong:** **[Bug report](https://github.com/codethor0/axiom-api-scanner/issues/new?template=bug_report.md)** — pick **one** primary feedback type; attach rule/finding ids or redacted JSON per [CONTRIBUTING](CONTRIBUTING.md#issue-triage--pick-one-template).
+
+Include **image tag**, **host OS/CPU**, **`docker version`**, `DATABASE_URL` **shape** only (no passwords), and exact **`curl`/HTTP** error for distribution issues.
 
 ## Quickstart (API on your Postgres)
 

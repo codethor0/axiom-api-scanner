@@ -2,6 +2,13 @@
 
 This document is **scoped** to what **Axiom** ships **today**: a **safe-by-default**, **OpenAPI 3.x**-centric scanner with a **control-plane HTTP API**, **YAML rules**, and a **bounded V1** mutation and finding pipeline. It does **not** claim “best API scanner in the world.” It states **which category** the project targets and what **evidence** backs that claim.
 
+## What this document does **not** prove (read first)
+
+- **No** head-to-head benchmark against ZAP, Burp, StackHawk, 42Crunch, or others — and **no** “Axiom is better” ranking.
+- **No** guarantee that the **four V1 families** map to every abuse class you care about in production.
+- **No** substitute for **your** authorization to test targets or for legal/policy sign-off.
+- **CI green** on GitHub means **`go test`**/lint/migrations there — **not** that **`make benchmark-findings-local`** or a **GHCR** smoke ran on your machine. Runtime proof is separate: [testing.md](testing.md#proof-matrix-ci-vs-local-vs-environment), [README.md](../README.md#validate-then-report-two-outsider-paths).
+
 ## Category we are trying to win
 
 **Evidence-first, low-blast-radius API abuse triage** for **OpenAPI-first** engineering teams: clear findings (`severity`, `assessment_tier`, `rule_declared_confidence`, evidence payloads), **deterministic** bounded mutations, and **operator-friendly** read paths—not a generic “scan everything” DAST on day one.
@@ -76,4 +83,4 @@ When families or inputs expand, update this file in the **same change** so posit
 
 - **RC launch copy:** [announcement.md](announcement.md) (includes the published release URL).
 - **Common questions:** [faq.md](faq.md).
-- **Issues:** [CONTRIBUTING.md](../CONTRIBUTING.md) — false positives, false negatives, setup friction, and auth/spec gaps are especially useful.
+- **Issues:** [CONTRIBUTING.md](../CONTRIBUTING.md#issue-triage--pick-one-template) — triage table for FP, FN, setup, auth/spec, and GHCR.
