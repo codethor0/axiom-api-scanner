@@ -8,6 +8,19 @@
    - **Docker fixtures:** `make e2e-local` then, when that finishes, `make benchmark-findings-local` — or run **`make release-candidate-proof`** once to run both **in order** (avoids port **8080** fights).
 3. **Interpret green:** use the **Proof matrix** below — **GitHub Actions does not substitute** for local Docker; it complements it.
 4. **Optional read:** [benchmark-results.md](benchmark-results.md) for expected `bench_summary` rows; [faq.md](faq.md) for CI vs local and common pitfalls.
+5. **API container only (no httpbin e2e):** build with **`make docker-build-api`**, run with **`DATABASE_URL`** set (`make docker-run-api`), or one-shot **`make docker-api-smoke`** to assert **`GET /v1/rules`** against an ephemeral Postgres. This is **packaging smoke**, not the **e2e-local** / **benchmark** proof matrix.
+
+## Docker API image (packaging)
+
+The repo [`Dockerfile`](../Dockerfile) builds **`cmd/api`** only. The image includes **`/app/migrations`** and **`/app/rules`**; it does **not** contain Postgres or fixture targets. Typical use:
+
+| Step | Command / note |
+| --- | --- |
+| Build | `make docker-build-api` (override tag: `AXIOM_IMAGE=ghcr.io/org/axiom:v0.1.0-rc.1 docker build ...` or set **`AXIOM_IMAGE`**) |
+| Run | `export DATABASE_URL=postgres://...` then `make docker-run-api`, or use `docker run` as in [README.md](../README.md#quickstart-docker) |
+| Smoke test | `make docker-api-smoke` — builds, starts **postgres:16-alpine** on a throwaway network, curls **`/v1/rules`**, removes containers |
+
+**CI:** workflow runs **`bash -n`** on [`scripts/docker_api_smoke.sh`](../scripts/docker_api_smoke.sh) only; it does **not** build or push the image. **Publishing to GHCR/Docker Hub** is an org-specific step (credentials, tag policy).
 
 ## Release candidate proof
 

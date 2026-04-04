@@ -25,6 +25,12 @@ Use this for a **10–15 minute** walkthrough. Adjust depth for your audience (e
 - Run: `make ci-unit` (or `make check-migrations && go vet ./... && golangci-lint run && go test ./... -count=1`).
 - Expect: passes on a normal dev machine; note Postgres **integration** tests **skip** unless `AXIOM_TEST_DATABASE_URL` is set (optional one-liner).
 
+## Beat 3b — Docker API image smoke (~2 minutes, optional)
+
+- Run: `make docker-api-smoke` (builds image, ephemeral Postgres, **`GET /v1/rules`**).
+- Success line: `OK: docker API smoke passed ...`
+- Say: this checks **packaging**, not the full **e2e-local** or **benchmark** matrix.
+
 ## Beat 4 — Live path B: Docker e2e (~4 minutes, optional)
 
 - Preconditions: Docker running, ports **54334**, **18080**, **8080** free (defaults).

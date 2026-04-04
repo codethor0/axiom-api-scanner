@@ -1,0 +1,26 @@
+# Git and IDE
+.git
+.github
+.cursor
+
+# Build outputs and local tooling
+bin/
+*.log
+
+# Docs and fixtures not needed to compile cmd/api
+docs/
+deploy/
+scripts/
+testdata/
+
+# Markdown and policy (not imported by Go)
+*.md
+LICENSE
+
+# Tests (not required for production binary)
+**/*_test.go
+
+# Linters / editor
+.golangci.yml
+.idea
+.vscode

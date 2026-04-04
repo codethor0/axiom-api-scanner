@@ -33,6 +33,10 @@ Four builtin-oriented **families** (see [benchmark-results.md](benchmark-results
 - **Release page:** https://github.com/codethor0/axiom-api-scanner/releases/tag/v0.1.0-rc.1  
 - **Tag:** `v0.1.0-rc.1`
 
+## Is there an official Docker / GHCR image?
+
+The repo includes a **`Dockerfile`** and **`make docker-build-api`** so you can build the API image locally or in **your** registry (for example GHCR or Docker Hub under **your** org). There is no **mandatory** public image maintained by the project for **`v0.1.0-rc.1`**; some teams prefer to build from the tagged source. See [README.md](../README.md#quickstart-docker) and [testing.md](testing.md#docker-api-image-packaging).
+
 ## What is the difference between CI proof and local proof?
 
 | Layer | Runs in GitHub Actions? | What it shows |

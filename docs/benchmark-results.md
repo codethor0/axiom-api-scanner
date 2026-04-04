@@ -12,6 +12,31 @@ This document records **what the local benchmark proves** for the **current** sa
 
 Full table: [testing.md](testing.md#proof-matrix-ci-vs-local-vs-environment). One command for e2e **then** benchmark: `make release-candidate-proof`.
 
+## For outsiders: what the four families mean
+
+These are **bounded** check types aligned with **`rule_family_coverage`** in the API (not an exhaustive OWASP checklist):
+
+| Family | Plain-language intent |
+| --- | --- |
+| **IDOR path/query swap** | Mutations that swap or probe identifiers in **path or query** to detect **access control** issues in the style of BOLA/IDOR. |
+| **Mass assignment privilege injection** | Request bodies that add **privilege-like** fields to probe **unsafe binding** / over-posting classes of bugs. |
+| **Path normalization bypass** | Alternate **path spellings** (encoding, slashes, segments) that may **bypass** route or gateway normalization. |
+| **Rate limit header rotation** | Controlled **header rotation** around rate-limit or throttling signals where rules and fixtures support it. |
+
+## What this benchmark proves and does **not** prove
+
+**Proves (on the **local** `make benchmark-findings-local` fixtures only):**
+
+- The engine can run the **builtin example rules** against **httpbin** + a small **nginx rate stub** and persist **tiered** findings.
+- For each family, the **`bench_summary`** line matches the **reference matrix** below (rows, outcome class)—use it for **regression** detection, not for “real world average severity.”
+
+**Does not prove:**
+
+- Coverage of **your** production routes, auth, or business rules.
+- Parity with **any other** scanner or commercial tool (no head-to-head runs are claimed here).
+- That **`rate_limit.header_rotate`** fires on **every** target (on httpbin it is often **`outcome_fixture_limited_no_row`** by design).
+- Anything about **CI** except that CI does **not** run this script—see [testing.md](testing.md#ci-vs-local).
+
 ## Category
 
 **Evidence-first, low-blast-radius API abuse checks** for **OpenAPI-first** workflows: built-in coverage is expressed in terms of these **V1 families** (aligned with **`rule_family_coverage`** in the API):

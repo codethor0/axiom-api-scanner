@@ -39,7 +39,7 @@ jobs:
         run: ./scripts/check_migrations.sh
 
       - name: Shell syntax (local proof scripts)
-        run: bash -n scripts/read_trust_assert.sh && bash -n scripts/e2e_local.sh && bash -n scripts/benchmark_findings_local.sh
+        run: bash -n scripts/read_trust_assert.sh && bash -n scripts/e2e_local.sh && bash -n scripts/benchmark_findings_local.sh && bash -n scripts/docker_api_smoke.sh
 
       - name: go vet
         run: go vet ./...

@@ -11,11 +11,15 @@ Pick **one** path; do not assume CI already ran Docker for you.
 | Goal | Command | You need |
 | --- | --- | --- |
 | Fast sanity (no Docker) | `make ci-unit` | Go; from repo root |
+| API in **Docker** + Postgres you supply | `make docker-build-api` then `make docker-run-api` | Docker; **`DATABASE_URL`** (see [Quickstart (Docker)](#quickstart-docker) below) |
+| Prove image boots (`GET /v1/rules`) | `make docker-api-smoke` | Docker + **curl** (ephemeral Postgres + cleanup) |
 | Full scan lifecycle on **fixtures** | `make e2e-local` | Docker, `curl`, `jq`, free ports **54334**, **18080**, **8080** (defaults) |
 | V1 **benchmark matrix** on **fixtures** | `make benchmark-findings-local` | Same + port **18081**; run **after** e2e or use `make release-candidate-proof` |
-| Everything local (sequential Docker) | `make release-candidate-proof` | Docker, `curl`, `jq`, Go |
+| Full local proof (sequential Docker) | `make release-candidate-proof` | Docker, `curl`, `jq`, Go |
 
 **Read next:** what green means in each layer — [docs/testing.md](docs/testing.md#evaluator-quick-path-first-10-minutes) and the **Proof matrix**. **Demo outline:** [docs/demo-script.md](docs/demo-script.md).
+
+**Registry images:** this repository ships a **`Dockerfile`** for the API; build locally or in your registry (for example GHCR). There is **no** required public image for evaluating the RC—you can build from source as below.
 
 ## What Axiom is
 
@@ -33,6 +37,38 @@ Pick **one** path; do not assume CI already ran Docker for you.
 ## Safety model (summary)
 
 Default execution posture is **passive** or **safe**. Destructive or high-impact rules must be labeled, classified, and **disabled unless explicitly enabled**. See [docs/safety-model.md](docs/safety-model.md).
+
+## Quickstart (Docker)
+
+Build the control-plane API image from the repo root (default tag **`axiom-api-scanner:local`**; override with **`AXIOM_IMAGE=...`**):
+
+```text
+make docker-build-api
+```
+
+Run against a Postgres you can reach from the container (**`DATABASE_URL`** must include a host the container sees, e.g. `host.docker.internal` on Docker Desktop, or a service name on a user-defined network). Example with a disposable Postgres on a Docker network:
+
+```text
+docker network create axiom-eval
+docker run -d --name axiom-eval-pg --network axiom-eval \
+  -e POSTGRES_PASSWORD=axiom -e POSTGRES_USER=axiom -e POSTGRES_DB=axiom \
+  postgres:16-alpine
+export DATABASE_URL='postgres://axiom:axiom@axiom-eval-pg:5432/axiom?sslmode=disable'
+docker run --rm --network axiom-eval -p 8080:8080 \
+  -e DATABASE_URL="$DATABASE_URL" \
+  axiom-api-scanner:local
+```
+
+Then `curl -s localhost:8080/v1/rules` should return JSON. Stop containers when done.
+
+**Makefile shortcut** (same requirement: set `DATABASE_URL` for a reachable Postgres):
+
+```text
+export DATABASE_URL='postgres://...'
+make docker-run-api
+```
+
+Optional: **`AXIOM_HTTP_PUBLISH=3000:8080`** maps host port **3000** to the API. No secrets belong in the image; pass **`DATABASE_URL`** (and optional **`AXIOM_HTTP_ADDR`**) only at **`docker run`**.
 
 ## Quickstart (API on your Postgres)
 
@@ -147,7 +183,8 @@ Push and pull requests on `main` run GitHub Actions per [.github/workflows/ci.ym
 | [docs/api.md](docs/api.md) | REST API |
 | [docs/rule-authoring.md](docs/rule-authoring.md) | Rule DSL |
 | [docs/safety-model.md](docs/safety-model.md) | Safety modes |
-| [docs/testing.md](docs/testing.md) | Tests and local Docker flows |
+| [docs/testing.md](docs/testing.md) | Tests, Docker image smoke, local Docker flows |
+| [Dockerfile](Dockerfile) | Multi-stage build for `cmd/api` (rules + migrations in image) |
 | [docs/development.md](docs/development.md) | Local development |
 
 ## Optional stacks

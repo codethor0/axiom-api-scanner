@@ -33,6 +33,7 @@ labels: ''
 ## Proof you already ran (check all that apply)
 
 - [ ] `make ci-unit`
+- [ ] `make docker-api-smoke` (if Docker / packaging / image run issue)
 - [ ] `make release-candidate-proof` (or `make e2e-local` / `make benchmark-findings-local`)
 - [ ] `go test ./... -count=1` with `AXIOM_TEST_DATABASE_URL` for postgres integration (if storage-related)
 

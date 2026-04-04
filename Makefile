@@ -1,4 +1,7 @@
-.PHONY: build test fmt vet lint check-migrations workflow-lint ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth benchmark-findings-local release-candidate-proof help
+.PHONY: build test fmt vet lint check-migrations workflow-lint ci ci-unit run-api migrate-up migrate-down test-integration e2e-local e2e-crapi e2e-crapi-auth benchmark-findings-local release-candidate-proof docker-build-api docker-run-api docker-api-smoke help
+
+# OCI image for cmd/api only (local tag). Override when pushing to a registry, e.g. ghcr.io/ORG/axiom-api-scanner:v0.1.0-rc.1
+AXIOM_IMAGE ?= axiom-api-scanner:local
 
 # CLI migrate must match github.com/golang-migrate/migrate/v4 used by internal/dbmigrate.
 MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
@@ -11,7 +14,26 @@ help:
 	@echo "  make e2e-local                 Docker e2e (httpbin); needs Docker, curl, jq."
 	@echo "  make benchmark-findings-local  Docker benchmark + bench_summary; run after e2e or alone on free :8080."
 	@echo "  make release-candidate-proof   check-migrations + vet + lint + go test + e2e-local + benchmark-findings-local (sequential)."
+	@echo "  make docker-build-api          docker build API image ($(AXIOM_IMAGE))."
+	@echo "  make docker-run-api            run image (requires DATABASE_URL); optional AXIOM_HTTP_PUBLISH=8080:8080."
+	@echo "  make docker-api-smoke          build image + ephemeral Postgres + curl /v1/rules (needs Docker + curl)."
 	@echo "  make build / run-api           API binary; run-api needs DATABASE_URL."
+
+docker-build-api:
+	docker build -t $(AXIOM_IMAGE) -f Dockerfile .
+
+# Run published-local API container. Example:
+#   export DATABASE_URL=postgres://user:pass@host.docker.internal:5432/axiom?sslmode=disable
+#   make docker-run-api
+# Publish port 8080 on the host by default; override with AXIOM_HTTP_PUBLISH=3000:8080
+AXIOM_HTTP_PUBLISH ?= 8080:8080
+docker-run-api:
+	@test -n "$(DATABASE_URL)" || (echo "docker-run-api: set DATABASE_URL (postgres://...)" >&2; exit 1)
+	docker run --rm -p $(AXIOM_HTTP_PUBLISH) -e DATABASE_URL="$(DATABASE_URL)" $(AXIOM_IMAGE)
+
+docker-api-smoke:
+	chmod +x ./scripts/docker_api_smoke.sh
+	AXIOM_DOCKER_SMOKE_IMAGE=$(AXIOM_IMAGE) ./scripts/docker_api_smoke.sh
 
 build:
 	go build -o bin/axiom-api ./cmd/api
