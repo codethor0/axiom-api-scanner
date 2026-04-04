@@ -41,3 +41,21 @@ paths:
 		t.Fatalf("second %+v", got[1])
 	}
 }
+
+func TestExtractEndpointSpecs_pathParameterMustBeDeclared(t *testing.T) {
+	const spec = `openapi: 3.0.3
+info:
+  title: T
+  version: "1.0"
+paths:
+  /anything/{id}:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	_, err := ExtractEndpointSpecs(context.Background(), []byte(spec))
+	if err == nil {
+		t.Fatal("expected validation error for path parameter without declaration")
+	}
+}

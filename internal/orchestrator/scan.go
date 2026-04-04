@@ -62,6 +62,14 @@ func (s *Service) Run(ctx context.Context, scanID string, opts Options) error {
 		}
 	}
 
+	// Completed / canceled runs are idempotent at the API: second start/resume should not fail.
+	if scan.Status == engine.ScanCompleted && scan.RunPhase == engine.PhaseFindingsComplete {
+		return nil
+	}
+	if scan.Status == engine.ScanCanceled || scan.RunPhase == engine.PhaseCanceled {
+		return nil
+	}
+
 	if err := s.advancePhase(ctx, scanID, engine.PhaseBaselineRunning, opts.ResumeRetry); err != nil {
 		return err
 	}

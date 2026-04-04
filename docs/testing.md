@@ -14,7 +14,7 @@
 | Handler | Scan create, control, OpenAPI, PATCH scan, executions list/detail, baseline/mutations contract cases, scan run status/cancel and mem dedupe assertions using `httptest` and in-memory repository fakes (no database). |
 | Baseline | `internal/executor/baseline/runner_test` uses `httptest` plus in-memory store; performs one GET baseline. |
 | Integration | `internal/storage/postgres` when `AXIOM_TEST_DATABASE_URL` is set (runs `dbmigrate.Up` from `AXIOM_TEST_MIGRATIONS_DIR` or repo-root `migrations/`, through `000007_scan_run_orchestration` and earlier). |
-| End-to-end | Full scan with findings against a live target (future). |
+| End-to-end | `make e2e-local` / `scripts/e2e_local.sh`: Docker Postgres + local httpbin, Axiom API on the host, full import, baseline, mutations, findings read APIs, orchestrated `run` + second `resume` (see below). |
 
 ## Fixtures
 
@@ -76,6 +76,39 @@ Linting:
 ```text
 make lint
 ```
+
+## Local Docker end-to-end (V1)
+
+**Goal:** Prove the supported safe V1 path against **local** targets only (no unsolicited scans of third-party APIs).
+
+**Axiom-managed stack** (repository root):
+
+```text
+docker info   # must show a healthy server
+make e2e-local
+```
+
+This runs `scripts/e2e_local.sh`, which:
+
+1. Starts `deploy/e2e/docker-compose.yml` services **`axiom-pg`** (Postgres on `127.0.0.1:54334`, DB `axiom_e2e`, user/password `axiom`) and **`httpbin`** (`mccutchen/go-httpbin` on `127.0.0.1:18080`).
+2. Builds `bin/axiom-api-e2e` and listens on `127.0.0.1:8080` with `DATABASE_URL=postgres://axiom:axiom@127.0.0.1:54334/axiom_e2e?sslmode=disable`.
+3. Exercises, via `curl` + `jq`: create scan with `base_url` = httpbin, `POST .../specs/openapi` with `testdata/e2e/httpbin-openapi.yaml`, list endpoints, baseline, mutations, list executions, list findings, optional finding + evidence GETs, then a second scan with `POST .../run` (`action: start`) and a second `POST .../run` (`action: resume`) after `findings_complete`.
+
+**Prerequisites:** `docker`, `curl`, `jq`, `go`.
+
+**Teardown:**
+
+```text
+docker compose -f deploy/e2e/docker-compose.yml down
+```
+
+**OWASP crAPI (primary API-security lab, not started by this script):** clone [OWASP/crAPI](https://github.com/OWASP/crAPI), then from `deploy/docker` run `docker compose -f docker-compose.yml --compatibility up -d` per upstream docs (web UI commonly `http://127.0.0.1:8888`). Do not run Axiom against crAPI until the stack is healthy. To experiment manually: create an Axiom scan with `base_url` pointing at crAPI’s gateway URL from their docs, import crAPI’s OpenAPI JSON when you have a stable URL from your deployment, then baseline/mutations or `POST .../run`. For automation, set `SKIP_CRAPI=0` and `CRAPI_OPENAPI_URL` before `./scripts/e2e_local.sh` (import-only smoke when the URL responds).
+
+**Juice Shop (secondary):** `docker compose -f deploy/e2e/docker-compose.yml --profile juice up -d` exposes `127.0.0.1:13000`. Prefer browser/app flows upstream; API OpenAPI varies by version—validate imports manually.
+
+**Swagger Petstore:** use only for harmless spec experiments if needed; prefer local httpbin for automation.
+
+**Known limitations:** `e2e-local` does not start crAPI or Juice Shop; ports `8080`, `18080`, `54334` must be free; orchestration is synchronous and holds the HTTP connection for `start`/`resume`.
 
 ## Evidence normalization
 

@@ -1,0 +1,32 @@
+# Local-only stack for Axiom V1 end-to-end validation (Postgres + httpbin).
+# OWASP crAPI and Juice Shop run from their own official compose files (see docs/testing.md).
+services:
+  axiom-pg:
+    image: postgres:16-alpine
+    container_name: axiom-e2e-pg
+    environment:
+      POSTGRES_USER: axiom
+      POSTGRES_PASSWORD: axiom
+      POSTGRES_DB: axiom_e2e
+    ports:
+      - "127.0.0.1:54334:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axiom -d axiom_e2e"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  httpbin:
+    image: mccutchen/go-httpbin:v2.15.0
+    container_name: axiom-e2e-httpbin
+    ports:
+      - "127.0.0.1:18080:8080"
+
+  # Secondary target (API-centric coverage beyond httpbin). Enable: docker compose --profile juice up -d
+  juice-shop:
+    profiles: ["juice"]
+    image: bkimminich/juice-shop:v17.1.0
+    container_name: axiom-e2e-juice
+    ports:
+      - "127.0.0.1:13000:3000"

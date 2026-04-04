@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint run-api migrate-up migrate-down test-integration
+.PHONY: build test fmt lint run-api migrate-up migrate-down test-integration e2e-local
 
 # CLI migrate must match github.com/golang-migrate/migrate/v4 used by internal/dbmigrate.
 MIGRATE ?= go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
@@ -32,3 +32,7 @@ migrate-down:
 run-api: build
 	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL is required"; exit 1)
 	AXIOM_RULES_DIR=./rules AXIOM_HTTP_ADDR=:8080 DATABASE_URL="$(DATABASE_URL)" ./bin/axiom-api
+
+# Docker-backed local V1 flow (Postgres + httpbin). Requires docker, curl, jq. See docs/testing.md.
+e2e-local:
+	./scripts/e2e_local.sh
