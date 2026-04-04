@@ -17,11 +17,13 @@ import (
 var findingsListItemCanonicalKeys = []string{
 	"id", "scan_id", "rule_id", "category", "severity",
 	"rule_declared_confidence", "assessment_tier", "summary", "evidence_uri", "created_at",
+	"finding_detail_path",
 }
 
 var executionsListItemCanonicalKeys = []string{
 	"id", "scan_id", "scan_endpoint_id", "phase", "execution_kind",
 	"request_summary", "response_summary", "duration_ms", "created_at",
+	"execution_detail_path",
 }
 
 func TestFindingsList_wireShape_andFiltered(t *testing.T) {
@@ -599,6 +601,11 @@ func TestFindingsList_itemCoreFieldsMatchFindingDetail(t *testing.T) {
 		li.MutatedExecutionID != fr.MutatedExecutionID {
 		t.Fatalf("list %+v detail %+v", li, fr)
 	}
+	wantDetail := "/v1/findings/" + f.ID
+	wantList := "/v1/scans/" + scan.ID + "/findings"
+	if li.FindingDetailPath != wantDetail || fr.FindingDetailPath != wantDetail || fr.FindingsListPath != wantList {
+		t.Fatalf("paths list=%q detail=%q findings_list=%q want detail %q list %q", li.FindingDetailPath, fr.FindingDetailPath, fr.FindingsListPath, wantDetail, wantList)
+	}
 	if fr.EvidenceInspection == nil || li.EvidenceInspection == nil {
 		t.Fatalf("expected inspections list=%v detail=%v", li.EvidenceInspection, fr.EvidenceInspection)
 	}
@@ -680,5 +687,10 @@ func TestExecutionsList_summariesMatchExecutionDetail(t *testing.T) {
 	}
 	if ei.DurationMs != er.DurationMs {
 		t.Fatalf("duration list=%d detail=%d", ei.DurationMs, er.DurationMs)
+	}
+	wantExec := "/v1/scans/" + scan.ID + "/executions/" + eid
+	wantExecList := "/v1/scans/" + scan.ID + "/executions"
+	if ei.ExecutionDetailPath != wantExec || er.ExecutionDetailPath != wantExec || er.ExecutionsListPath != wantExecList {
+		t.Fatalf("paths list=%q detail=%q exec_list=%q", ei.ExecutionDetailPath, er.ExecutionDetailPath, er.ExecutionsListPath)
 	}
 }

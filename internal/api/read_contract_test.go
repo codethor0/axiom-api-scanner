@@ -18,7 +18,8 @@ import (
 var executionReadRequired = []string{
 	"id", "scan_id", "phase", "execution_kind",
 	"request", "response", "request_summary", "response_summary",
-	"duration_ms", "created_at", "operator_guide",
+	"duration_ms", "created_at", "executions_list_path", "execution_detail_path",
+	"operator_guide",
 }
 
 var executionOperatorGuideKeys = []string{
@@ -36,7 +37,7 @@ var findingReadTrustLegendKeys = []string{
 var executionListItemRequired = []string{
 	"id", "scan_id", "scan_endpoint_id", "phase", "execution_kind",
 	"request_summary", "response_summary",
-	"duration_ms", "created_at",
+	"duration_ms", "created_at", "execution_detail_path",
 }
 
 var executionSnapRequestKeys = []string{"method", "url"}
@@ -47,7 +48,8 @@ var executionResSummaryKeys = []string{"status_code", "header_count", "body_byte
 var findingReadRequired = []string{
 	"id", "scan_id", "rule_id", "category", "severity",
 	"rule_declared_confidence", "assessment_tier", "summary",
-	"evidence_uri", "created_at", "read_trust_legend",
+	"evidence_uri", "created_at", "findings_list_path", "finding_detail_path",
+	"read_trust_legend",
 }
 
 var evidenceArtifactRequired = []string{

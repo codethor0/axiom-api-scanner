@@ -25,6 +25,8 @@ type ExecutionListItem struct {
 	ResponseSummary ExecutionResponseSummary `json:"response_summary"`
 	DurationMs      int64                    `json:"duration_ms"`
 	CreatedAt       time.Time                `json:"created_at"`
+	// ExecutionDetailPath is path-only GET for full redacted HTTP (summaries on this row match detail.request_summary/response_summary).
+	ExecutionDetailPath string `json:"execution_detail_path"`
 }
 
 // ExecutionRead is the operator-oriented JSON shape for GET /v1/scans/{scanID}/executions/{executionID} (full redacted exchange).
@@ -51,7 +53,10 @@ type ExecutionRead struct {
 	ResponseSummary ExecutionResponseSummary `json:"response_summary"`
 	DurationMs      int64                    `json:"duration_ms"`
 	CreatedAt       time.Time                `json:"created_at"`
-	OperatorGuide   *ExecutionOperatorGuide  `json:"operator_guide"`
+	// ExecutionsListPath and ExecutionDetailPath are path-only; pair baseline vs mutated via operator_guide.cross_phase_filter_hint or scan_endpoint_id filters.
+	ExecutionsListPath  string                  `json:"executions_list_path"`
+	ExecutionDetailPath string                  `json:"execution_detail_path"`
+	OperatorGuide       *ExecutionOperatorGuide `json:"operator_guide"`
 }
 
 // ExecutionOperatorGuide is a stable read-model gloss for operators (no new persisted facts).
@@ -193,8 +198,9 @@ func NewExecutionListItem(r engine.ExecutionRecord) ExecutionListItem {
 			HeaderCount:    len(r.ResponseHeaders),
 			BodyByteLength: len(r.ResponseBody),
 		},
-		DurationMs: r.DurationMs,
-		CreatedAt:  r.CreatedAt,
+		DurationMs:          r.DurationMs,
+		CreatedAt:           r.CreatedAt,
+		ExecutionDetailPath: executionDetailPath(r.ScanID, r.ID),
 	}
 }
 
@@ -233,8 +239,10 @@ func NewExecutionRead(r engine.ExecutionRecord) ExecutionRead {
 			HeaderCount:    len(r.ResponseHeaders),
 			BodyByteLength: len(r.ResponseBody),
 		},
-		DurationMs:    r.DurationMs,
-		CreatedAt:     r.CreatedAt,
-		OperatorGuide: newExecutionOperatorGuide(r),
+		DurationMs:          r.DurationMs,
+		CreatedAt:           r.CreatedAt,
+		ExecutionsListPath:  executionsListPath(r.ScanID),
+		ExecutionDetailPath: executionDetailPath(r.ScanID, r.ID),
+		OperatorGuide:       newExecutionOperatorGuide(r),
 	}
 }

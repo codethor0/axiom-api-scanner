@@ -41,20 +41,22 @@ type FindingListEvidenceInspection struct {
 //
 // Orthogonal axes match FindingRead: severity = impact; rule_declared_confidence = YAML confidence; assessment_tier = post-run sufficiency.
 type FindingListItem struct {
-	ID                     string                         `json:"id"`
-	ScanID                 string                         `json:"scan_id"`
-	RuleID                 string                         `json:"rule_id"`
-	Category               string                         `json:"category"`
-	Severity               findings.Severity              `json:"severity"`
-	RuleDeclaredConfidence string                         `json:"rule_declared_confidence"`
-	AssessmentTier         string                         `json:"assessment_tier"`
-	Summary                string                         `json:"summary"`
-	EvidenceURI            string                         `json:"evidence_uri"`
-	ScanEndpointID         string                         `json:"scan_endpoint_id,omitempty"`
-	BaselineExecutionID    string                         `json:"baseline_execution_id,omitempty"`
-	MutatedExecutionID     string                         `json:"mutated_execution_id,omitempty"`
-	CreatedAt              time.Time                      `json:"created_at"`
-	EvidenceInspection     *FindingListEvidenceInspection `json:"evidence_inspection,omitempty"`
+	ID                     string            `json:"id"`
+	ScanID                 string            `json:"scan_id"`
+	RuleID                 string            `json:"rule_id"`
+	Category               string            `json:"category"`
+	Severity               findings.Severity `json:"severity"`
+	RuleDeclaredConfidence string            `json:"rule_declared_confidence"`
+	AssessmentTier         string            `json:"assessment_tier"`
+	Summary                string            `json:"summary"`
+	EvidenceURI            string            `json:"evidence_uri"`
+	ScanEndpointID         string            `json:"scan_endpoint_id,omitempty"`
+	BaselineExecutionID    string            `json:"baseline_execution_id,omitempty"`
+	MutatedExecutionID     string            `json:"mutated_execution_id,omitempty"`
+	CreatedAt              time.Time         `json:"created_at"`
+	// FindingDetailPath is path-only GET for this row (same route as detail); list omits evidence_summary and read_trust_legend.
+	FindingDetailPath  string                         `json:"finding_detail_path"`
+	EvidenceInspection *FindingListEvidenceInspection `json:"evidence_inspection,omitempty"`
 }
 
 // FindingRead is the operator read projection for GET /v1/findings/{findingID} (full columns including raw evidence_summary).
@@ -69,20 +71,23 @@ type FindingListItem struct {
 //   - read_trust_legend: stable glossary strings (detail-only) mapping each orthogonal/derived block to its role; does not repeat row values or tier-specific sentences (those stay in operator_assessment when present).
 //   - evidence_comparison_guide: optional one-line pointer to baseline vs mutated execution GETs when both ids are known (scan-scoped paths); complements evidence_inspection.matcher_outcomes (what matched) without duplicating id-only top-level fields.
 type FindingRead struct {
-	ID                      string                     `json:"id"`
-	ScanID                  string                     `json:"scan_id"`
-	RuleID                  string                     `json:"rule_id"`
-	Category                string                     `json:"category"`
-	Severity                findings.Severity          `json:"severity"`
-	RuleDeclaredConfidence  string                     `json:"rule_declared_confidence"`
-	AssessmentTier          string                     `json:"assessment_tier"`
-	Summary                 string                     `json:"summary"`
-	EvidenceSummary         json.RawMessage            `json:"evidence_summary,omitempty"`
-	EvidenceURI             string                     `json:"evidence_uri"`
-	ScanEndpointID          string                     `json:"scan_endpoint_id,omitempty"`
-	BaselineExecutionID     string                     `json:"baseline_execution_id,omitempty"`
-	MutatedExecutionID      string                     `json:"mutated_execution_id,omitempty"`
-	CreatedAt               time.Time                  `json:"created_at"`
+	ID                     string            `json:"id"`
+	ScanID                 string            `json:"scan_id"`
+	RuleID                 string            `json:"rule_id"`
+	Category               string            `json:"category"`
+	Severity               findings.Severity `json:"severity"`
+	RuleDeclaredConfidence string            `json:"rule_declared_confidence"`
+	AssessmentTier         string            `json:"assessment_tier"`
+	Summary                string            `json:"summary"`
+	EvidenceSummary        json.RawMessage   `json:"evidence_summary,omitempty"`
+	EvidenceURI            string            `json:"evidence_uri"`
+	ScanEndpointID         string            `json:"scan_endpoint_id,omitempty"`
+	BaselineExecutionID    string            `json:"baseline_execution_id,omitempty"`
+	MutatedExecutionID     string            `json:"mutated_execution_id,omitempty"`
+	CreatedAt              time.Time         `json:"created_at"`
+	// FindingsListPath and FindingDetailPath are path-only navigation (same strings as run-status drilldown list path and GET-by-id route).
+	FindingsListPath        string                     `json:"findings_list_path"`
+	FindingDetailPath       string                     `json:"finding_detail_path"`
 	EvidenceInspection      *FindingEvidenceInspection `json:"evidence_inspection,omitempty"`
 	OperatorAssessment      *FindingOperatorAssessment `json:"operator_assessment,omitempty"`
 	ReadTrustLegend         FindingReadTrustLegend     `json:"read_trust_legend"`
@@ -269,6 +274,7 @@ func NewFindingListItem(f findings.Finding) FindingListItem {
 		BaselineExecutionID:    baseID,
 		MutatedExecutionID:     mutID,
 		CreatedAt:              f.CreatedAt,
+		FindingDetailPath:      findingDetailPath(f.ID),
 		EvidenceInspection:     parseFindingEvidenceInspectionList(f),
 	}
 }
@@ -291,6 +297,8 @@ func NewFindingRead(f findings.Finding) FindingRead {
 		BaselineExecutionID:     baseID,
 		MutatedExecutionID:      mutID,
 		CreatedAt:               f.CreatedAt,
+		FindingsListPath:        findingsListPath(f.ScanID),
+		FindingDetailPath:       findingDetailPath(f.ID),
 		EvidenceInspection:      parseFindingEvidenceInspection(f),
 		OperatorAssessment:      parseFindingOperatorAssessment(f),
 		ReadTrustLegend:         findingReadTrustLegend,

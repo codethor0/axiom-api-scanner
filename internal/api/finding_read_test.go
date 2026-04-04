@@ -34,6 +34,22 @@ func TestMergedFindingExecutionIDs_prefersRowFallsBackToEvidenceSummary(t *testi
 	}
 }
 
+func TestNewFindingListItem_detailPathMatchesFindingRead(t *testing.T) {
+	t.Parallel()
+	f := findings.Finding{
+		ID:     "ffffffff-ffff-ffff-ffff-ffffffffffff",
+		ScanID: "ssssssss-ssss-ssss-ssss-ssssssssssss",
+	}
+	li := NewFindingListItem(f)
+	r := NewFindingRead(f)
+	if li.FindingDetailPath != "/v1/findings/"+f.ID || r.FindingDetailPath != li.FindingDetailPath {
+		t.Fatalf("detail path li=%q r=%q", li.FindingDetailPath, r.FindingDetailPath)
+	}
+	if r.FindingsListPath != "/v1/scans/"+f.ScanID+"/findings" {
+		t.Fatalf("findings_list_path %q", r.FindingsListPath)
+	}
+}
+
 func TestParseFindingEvidenceInspectionList_countsNoRows(t *testing.T) {
 	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
 		MatcherOutcomes: []findings.MatcherOutcomeSummary{{Index: 0, Kind: "a", Passed: true}, {Index: 1, Kind: "b", Passed: false}},
