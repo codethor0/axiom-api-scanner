@@ -65,6 +65,7 @@ type FindingListItem struct {
 //   - assessment_tier: post-run evidence sufficiency (confirmed / tentative / incomplete) from stored assessment.
 //   - summary: one-line operator text (human-written or generated); not structured evidence.
 //   - evidence_summary: opaque persisted JSON (schema_version + matcher/diff payload); use evidence_inspection for a stable subset without re-parsing.
+//   - operator_assessment: optional read-model hints (tier gloss, notes/hints mirrored from evidence_summary) so clients need not parse JSON for axis meaning; severity/confidence/tier stay top-level.
 type FindingRead struct {
 	ID                     string                     `json:"id"`
 	ScanID                 string                     `json:"scan_id"`
@@ -81,6 +82,47 @@ type FindingRead struct {
 	MutatedExecutionID     string                     `json:"mutated_execution_id,omitempty"`
 	CreatedAt              time.Time                  `json:"created_at"`
 	EvidenceInspection     *FindingEvidenceInspection `json:"evidence_inspection,omitempty"`
+	OperatorAssessment     *FindingOperatorAssessment `json:"operator_assessment,omitempty"`
+}
+
+// FindingOperatorAssessment surfaces scanner-policy gloss and mirrored evidence codes without duplicating top-level severity / rule_declared_confidence / assessment_tier.
+// assessment_note_codes mirrors evidence_summary.assessment_notes (trimmed non-empty entries).
+// scanner_policy_hints mirrors evidence_summary.interpretation_hints.
+type FindingOperatorAssessment struct {
+	EvidenceSufficiencyGuide string   `json:"evidence_sufficiency_guide,omitempty"`
+	AssessmentNoteCodes      []string `json:"assessment_note_codes,omitempty"`
+	ScannerPolicyHints       []string `json:"scanner_policy_hints,omitempty"`
+}
+
+func parseFindingOperatorAssessment(f findings.Finding) *FindingOperatorAssessment {
+	tier := strings.TrimSpace(f.AssessmentTier)
+	guide := findings.TierEvidenceSufficiencyGuide(tier)
+	var notes, hints []string
+	if len(f.EvidenceSummary) > 0 {
+		var v1 findings.EvidenceSummaryV1
+		if err := json.Unmarshal(f.EvidenceSummary, &v1); err == nil {
+			for _, n := range v1.AssessmentNotes {
+				s := strings.TrimSpace(n)
+				if s != "" {
+					notes = append(notes, s)
+				}
+			}
+			for _, h := range v1.InterpretationHints {
+				s := strings.TrimSpace(h)
+				if s != "" {
+					hints = append(hints, s)
+				}
+			}
+		}
+	}
+	if guide == "" && len(notes) == 0 && len(hints) == 0 {
+		return nil
+	}
+	return &FindingOperatorAssessment{
+		EvidenceSufficiencyGuide: guide,
+		AssessmentNoteCodes:      notes,
+		ScannerPolicyHints:       hints,
+	}
 }
 
 func mergedFindingExecutionIDs(f findings.Finding) (baselineID, mutatedID string) {
@@ -214,5 +256,6 @@ func NewFindingRead(f findings.Finding) FindingRead {
 		MutatedExecutionID:     mutID,
 		CreatedAt:              f.CreatedAt,
 		EvidenceInspection:     parseFindingEvidenceInspection(f),
+		OperatorAssessment:     parseFindingOperatorAssessment(f),
 	}
 }

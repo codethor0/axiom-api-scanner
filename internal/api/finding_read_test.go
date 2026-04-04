@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/codethor0/axiom-api-scanner/internal/findings"
@@ -98,6 +100,64 @@ func TestNewFindingRead_fillsExecutionIDsFromEvidenceSummary(t *testing.T) {
 	r := NewFindingRead(f)
 	if r.BaselineExecutionID != "eb" || r.MutatedExecutionID != "em" {
 		t.Fatalf("read %+v", r)
+	}
+}
+
+func TestNewFindingRead_operatorAssessment_tierGuideAndMirroredCodes(t *testing.T) {
+	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
+		AssessmentTier:      "tentative",
+		AssessmentNotes:     []string{" weak_note ", ""},
+		InterpretationHints: []string{"hint_a"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := findings.Finding{
+		ID:              "fid",
+		ScanID:          "sid",
+		RuleID:          "r",
+		Category:        "c",
+		Severity:        findings.SeverityMedium,
+		AssessmentTier:  "tentative",
+		Summary:         "s",
+		EvidenceURI:     "/e",
+		EvidenceSummary: evSum,
+	}
+	r := NewFindingRead(f)
+	if r.OperatorAssessment == nil {
+		t.Fatal("expected operator_assessment")
+	}
+	if !strings.Contains(r.OperatorAssessment.EvidenceSufficiencyGuide, "tentative") {
+		t.Fatalf("guide %q", r.OperatorAssessment.EvidenceSufficiencyGuide)
+	}
+	if len(r.OperatorAssessment.AssessmentNoteCodes) != 1 || r.OperatorAssessment.AssessmentNoteCodes[0] != "weak_note" {
+		t.Fatalf("notes %+v", r.OperatorAssessment.AssessmentNoteCodes)
+	}
+	if len(r.OperatorAssessment.ScannerPolicyHints) != 1 || r.OperatorAssessment.ScannerPolicyHints[0] != "hint_a" {
+		t.Fatalf("hints %+v", r.OperatorAssessment.ScannerPolicyHints)
+	}
+}
+
+func TestNewFindingRead_operatorAssessment_omittedWhenEmptySignals(t *testing.T) {
+	f := findings.Finding{
+		ID:          "fid",
+		ScanID:      "sid",
+		RuleID:      "r",
+		Category:    "c",
+		Severity:    findings.SeverityLow,
+		Summary:     "s",
+		EvidenceURI: "/e",
+	}
+	r := NewFindingRead(f)
+	if r.OperatorAssessment != nil {
+		t.Fatalf("want nil, got %+v", r.OperatorAssessment)
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "operator_assessment") {
+		t.Fatalf("should omit empty operator_assessment: %s", raw)
 	}
 }
 

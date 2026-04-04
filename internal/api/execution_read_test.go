@@ -58,6 +58,38 @@ func TestNewExecutionRead_summariesAndKind(t *testing.T) {
 	if r.ResponseSummary.ContentType != "text/plain" {
 		t.Fatalf("content type %+v", r.ResponseSummary)
 	}
+	g := r.OperatorGuide
+	if g == nil {
+		t.Fatal("operator_guide")
+	}
+	if g.PhaseRole != "mutated_post_mutation" || !strings.Contains(g.LinkageNarration, "rule.a") ||
+		!strings.Contains(g.LinkageNarration, "ck-1") {
+		t.Fatalf("guide %+v", g)
+	}
+	if g.SummariesMirrorRedactedSnapshots == "" {
+		t.Fatal("summaries note")
+	}
+}
+
+func TestNewExecutionRead_operatorGuide_baselineRole(t *testing.T) {
+	t.Parallel()
+	rec := engine.ExecutionRecord{
+		ID:             "e0",
+		ScanID:         "s0",
+		ScanEndpointID: "ep0",
+		Phase:          engine.PhaseBaseline,
+		RequestMethod:  "GET",
+		RequestURL:     "https://ex/",
+		ResponseStatus: 200,
+	}
+	r := NewExecutionRead(rec)
+	g := r.OperatorGuide
+	if g == nil || g.PhaseRole != "baseline_pre_mutation" {
+		t.Fatalf("guide %+v", g)
+	}
+	if !strings.Contains(g.LinkageNarration, "Baseline") {
+		t.Fatalf("narration %q", g.LinkageNarration)
+	}
 }
 
 func TestNewExecutionListItem_matchesSummariesWithoutBodies(t *testing.T) {

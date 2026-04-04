@@ -32,6 +32,7 @@ type ExecutionListItem struct {
 // List vs detail: list items expose only request_summary/response_summary; detail adds request/response snapshots (same persisted bytes and header maps subject to redaction).
 // Consistency: execution_kind always equals phase for this API. request_summary.method and body/header counts align with request; response_summary.status_code matches response.status_code.
 // Rule linkage: mutation_rule_id and candidate_key apply only to mutated phase rows; baseline rows omit them.
+// operator_guide clarifies phase role vs mutation linkage and how summaries relate to snapshots (read-path only).
 type ExecutionRead struct {
 	ID             string `json:"id"`
 	ScanID         string `json:"scan_id"`
@@ -50,6 +51,56 @@ type ExecutionRead struct {
 	ResponseSummary ExecutionResponseSummary `json:"response_summary"`
 	DurationMs      int64                    `json:"duration_ms"`
 	CreatedAt       time.Time                `json:"created_at"`
+	OperatorGuide   *ExecutionOperatorGuide  `json:"operator_guide"`
+}
+
+// ExecutionOperatorGuide is a stable read-model gloss for operators (no new persisted facts).
+type ExecutionOperatorGuide struct {
+	PhaseRole                        string `json:"phase_role"`
+	LinkageNarration                 string `json:"linkage_narration"`
+	SummariesMirrorRedactedSnapshots string `json:"summaries_mirror_redacted_snapshots"`
+}
+
+const executionSummariesMirrorNote = "request_summary and response_summary repeat the same persisted request/response fields (method, shortened URL, header/body counts and lengths, status, content-type); they do not add HTTP material beyond those redacted snapshots."
+
+func executionPhaseRole(phase string) string {
+	switch strings.ToLower(strings.TrimSpace(phase)) {
+	case "baseline":
+		return "baseline_pre_mutation"
+	case "mutated":
+		return "mutated_post_mutation"
+	default:
+		return ""
+	}
+}
+
+func executionLinkageNarration(r engine.ExecutionRecord) string {
+	switch r.Phase {
+	case engine.PhaseBaseline:
+		return "Baseline capture before mutation; pair with mutated executions for the same scan endpoint (mutation_rule_id / candidate_key on those rows) when diffing for findings."
+	case engine.PhaseMutated:
+		rule := strings.TrimSpace(r.RuleID)
+		ck := strings.TrimSpace(r.CandidateKey)
+		switch {
+		case rule != "" && ck != "":
+			return "Post-mutation replay for mutation rule \"" + rule + "\" (candidate \"" + ck + "\"); compare to the baseline execution for this work item."
+		case rule != "":
+			return "Post-mutation replay for mutation rule \"" + rule + "\"; compare to the baseline execution for this work item."
+		default:
+			return "Post-mutation replay; compare to the baseline execution for this work item."
+		}
+	default:
+		return ""
+	}
+}
+
+func newExecutionOperatorGuide(r engine.ExecutionRecord) *ExecutionOperatorGuide {
+	phase := string(r.Phase)
+	return &ExecutionOperatorGuide{
+		PhaseRole:                        executionPhaseRole(phase),
+		LinkageNarration:                 executionLinkageNarration(r),
+		SummariesMirrorRedactedSnapshots: executionSummariesMirrorNote,
+	}
 }
 
 // ExecutionRequestSummary is a concise, scanner-safe view for list/detail comparison.
@@ -168,7 +219,8 @@ func NewExecutionRead(r engine.ExecutionRecord) ExecutionRead {
 			HeaderCount:    len(r.ResponseHeaders),
 			BodyByteLength: len(r.ResponseBody),
 		},
-		DurationMs: r.DurationMs,
-		CreatedAt:  r.CreatedAt,
+		DurationMs:    r.DurationMs,
+		CreatedAt:     r.CreatedAt,
+		OperatorGuide: newExecutionOperatorGuide(r),
 	}
 }

@@ -17,7 +17,11 @@ import (
 var executionReadRequired = []string{
 	"id", "scan_id", "phase", "execution_kind",
 	"request", "response", "request_summary", "response_summary",
-	"duration_ms", "created_at",
+	"duration_ms", "created_at", "operator_guide",
+}
+
+var executionOperatorGuideKeys = []string{
+	"phase_role", "linkage_narration", "summaries_mirror_redacted_snapshots",
 }
 
 // executionListItemRequired is GET .../executions items[] (summaries only; no request/response bodies).
@@ -106,6 +110,7 @@ func TestContract_executionRead_wireKeys(t *testing.T) {
 	if err := json.Unmarshal(body, &top); err != nil {
 		t.Fatal(err)
 	}
+	assertJSONKeys(t, top["operator_guide"], executionOperatorGuideKeys)
 	assertJSONKeys(t, top["request"], executionSnapRequestKeys)
 	assertJSONKeys(t, top["response"], executionSnapResponseKeys)
 	assertJSONKeys(t, top["request_summary"], executionReqSummaryKeys)
@@ -113,6 +118,13 @@ func TestContract_executionRead_wireKeys(t *testing.T) {
 
 	if string(top["phase"]) != `"baseline"` || string(top["execution_kind"]) != `"baseline"` {
 		t.Fatalf("phase/kind %s %s", top["phase"], top["execution_kind"])
+	}
+	var og map[string]json.RawMessage
+	if err := json.Unmarshal(top["operator_guide"], &og); err != nil {
+		t.Fatal(err)
+	}
+	if string(og["phase_role"]) != `"baseline_pre_mutation"` {
+		t.Fatalf("operator_guide.phase_role %s", og["phase_role"])
 	}
 }
 
@@ -230,7 +242,18 @@ func TestContract_findingReadAndEvidence_wireKeys(t *testing.T) {
 	if uerr := json.Unmarshal(fb, &ftop); uerr != nil {
 		t.Fatal(uerr)
 	}
-	if _, ok := ftop["evidence_inspection"]; !ok {
+	rawOA, ok := ftop["operator_assessment"]
+	if !ok {
+		t.Fatal("expected operator_assessment on finding read for tentative tier")
+	}
+	var oa map[string]json.RawMessage
+	if uerr := json.Unmarshal(rawOA, &oa); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if _, hasGuide := oa["evidence_sufficiency_guide"]; !hasGuide {
+		t.Fatalf("operator_assessment missing evidence_sufficiency_guide: %s", string(rawOA))
+	}
+	if _, hasInsp := ftop["evidence_inspection"]; !hasInsp {
 		t.Fatal("expected evidence_inspection on finding read")
 	}
 	rawEv, ok := ftop["evidence_summary"]
