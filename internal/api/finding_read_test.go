@@ -32,6 +32,23 @@ func TestMergedFindingExecutionIDs_prefersRowFallsBackToEvidenceSummary(t *testi
 	}
 }
 
+func TestParseFindingEvidenceInspectionList_countsNoRows(t *testing.T) {
+	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
+		MatcherOutcomes: []findings.MatcherOutcomeSummary{{Index: 0, Kind: "a", Passed: true}, {Index: 1, Kind: "b", Passed: false}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := findings.Finding{EvidenceSummary: evSum}
+	ins := parseFindingEvidenceInspectionList(f)
+	if ins == nil {
+		t.Fatal("expected inspection")
+	}
+	if ins.DiffPointCount != 0 || ins.MatcherPassed != 1 || ins.MatcherFailed != 1 {
+		t.Fatalf("got %+v", ins)
+	}
+}
+
 func TestParseFindingEvidenceInspection_matcherOutcomesSortedByIndex(t *testing.T) {
 	evSum, err := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
 		MatcherOutcomes: []findings.MatcherOutcomeSummary{
@@ -69,13 +86,13 @@ func TestNewFindingRead_fillsExecutionIDsFromEvidenceSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := findings.Finding{
-		ID:             "fid",
-		ScanID:         "sid",
-		RuleID:         "r",
-		Category:       "c",
-		Severity:       findings.SeverityLow,
-		Summary:        "sum",
-		EvidenceURI:    "/v1/findings/fid/evidence",
+		ID:              "fid",
+		ScanID:          "sid",
+		RuleID:          "r",
+		Category:        "c",
+		Severity:        findings.SeverityLow,
+		Summary:         "sum",
+		EvidenceURI:     "/v1/findings/fid/evidence",
 		EvidenceSummary: evSum,
 	}
 	r := NewFindingRead(f)

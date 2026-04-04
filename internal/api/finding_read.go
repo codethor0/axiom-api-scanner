@@ -18,7 +18,7 @@ type MatcherOutcomeLine struct {
 }
 
 // FindingEvidenceInspection surfaces a stable, scan-safe view of matcher/diff facets inside evidence_summary.
-// Execution linkage also appears on the parent finding/list row; when present in both places, values match after merge from evidence_summary (see mergedFindingExecutionIDs).
+// Execution linkage also appears on the parent finding/read row; when present in both places, values match after merge from evidence_summary (see mergedFindingExecutionIDs).
 type FindingEvidenceInspection struct {
 	BaselineExecutionID string               `json:"baseline_execution_id,omitempty"`
 	MutatedExecutionID  string               `json:"mutated_execution_id,omitempty"`
@@ -26,23 +26,31 @@ type FindingEvidenceInspection struct {
 	DiffPointCount      int                  `json:"diff_point_count,omitempty"`
 }
 
-// FindingListItem is the list projection for GET .../findings: ranked triage fields first, linkage and
-// evidence_uri, optional evidence_inspection, no raw evidence_summary blob (use GET /v1/findings/{id} for that).
+// FindingListEvidenceInspection is the list projection: diff and matcher pass/fail counts only (no per-matcher rows).
+// Baseline and mutated execution ids appear on the parent list row, not duplicated here.
+type FindingListEvidenceInspection struct {
+	DiffPointCount int `json:"diff_point_count,omitempty"`
+	MatcherPassed  int `json:"matcher_passed,omitempty"`
+	MatcherFailed  int `json:"matcher_failed,omitempty"`
+}
+
+// FindingListItem is the list projection for GET .../findings. Field order matches FindingRead for shared keys
+// (excluding evidence_summary and full detail-only inspection). No raw evidence_summary JSON; use GET /v1/findings/{id}.
 type FindingListItem struct {
-	ID                     string                     `json:"id"`
-	RuleID                 string                     `json:"rule_id"`
-	Severity               findings.Severity          `json:"severity"`
-	RuleDeclaredConfidence string                     `json:"rule_declared_confidence"`
-	AssessmentTier         string                     `json:"assessment_tier"`
-	ScanID                 string                     `json:"scan_id"`
-	Category               string                     `json:"category"`
-	ScanEndpointID         string                     `json:"scan_endpoint_id,omitempty"`
-	BaselineExecutionID    string                     `json:"baseline_execution_id,omitempty"`
-	MutatedExecutionID     string                     `json:"mutated_execution_id,omitempty"`
-	EvidenceURI            string                     `json:"evidence_uri"`
-	Summary                string                     `json:"summary"`
-	EvidenceInspection     *FindingEvidenceInspection `json:"evidence_inspection,omitempty"`
-	CreatedAt              time.Time                  `json:"created_at"`
+	ID                     string                         `json:"id"`
+	ScanID                 string                         `json:"scan_id"`
+	RuleID                 string                         `json:"rule_id"`
+	Category               string                         `json:"category"`
+	Severity               findings.Severity              `json:"severity"`
+	RuleDeclaredConfidence string                         `json:"rule_declared_confidence"`
+	AssessmentTier         string                         `json:"assessment_tier"`
+	Summary                string                         `json:"summary"`
+	EvidenceURI            string                         `json:"evidence_uri"`
+	ScanEndpointID         string                         `json:"scan_endpoint_id,omitempty"`
+	BaselineExecutionID    string                         `json:"baseline_execution_id,omitempty"`
+	MutatedExecutionID     string                         `json:"mutated_execution_id,omitempty"`
+	CreatedAt              time.Time                      `json:"created_at"`
+	EvidenceInspection     *FindingListEvidenceInspection `json:"evidence_inspection,omitempty"`
 }
 
 // FindingRead is the operator read projection for GET /v1/findings/{findingID} (full columns including raw evidence_summary).
@@ -120,6 +128,32 @@ func parseFindingEvidenceInspection(f findings.Finding) *FindingEvidenceInspecti
 	return linkageInspection(baseMerged, mutMerged, mo, len(v1.DiffPoints))
 }
 
+// parseFindingEvidenceInspectionList derives compact evidence cues for list rows (counts only).
+func parseFindingEvidenceInspectionList(f findings.Finding) *FindingListEvidenceInspection {
+	var passed, failed, diffN int
+	if len(f.EvidenceSummary) > 0 {
+		var v1 findings.EvidenceSummaryV1
+		if err := json.Unmarshal(f.EvidenceSummary, &v1); err == nil {
+			diffN = len(v1.DiffPoints)
+			for _, row := range v1.MatcherOutcomes {
+				if row.Passed {
+					passed++
+				} else {
+					failed++
+				}
+			}
+		}
+	}
+	if diffN == 0 && passed == 0 && failed == 0 {
+		return nil
+	}
+	return &FindingListEvidenceInspection{
+		DiffPointCount: diffN,
+		MatcherPassed:  passed,
+		MatcherFailed:  failed,
+	}
+}
+
 func linkageInspection(baseID, mutID string, outcomes []MatcherOutcomeLine, diffN int) *FindingEvidenceInspection {
 	baseID = strings.TrimSpace(baseID)
 	mutID = strings.TrimSpace(mutID)
@@ -139,19 +173,19 @@ func NewFindingListItem(f findings.Finding) FindingListItem {
 	baseID, mutID := mergedFindingExecutionIDs(f)
 	return FindingListItem{
 		ID:                     f.ID,
+		ScanID:                 f.ScanID,
 		RuleID:                 f.RuleID,
+		Category:               f.Category,
 		Severity:               f.Severity,
 		RuleDeclaredConfidence: strings.TrimSpace(f.RuleDeclaredConfidence),
 		AssessmentTier:         strings.TrimSpace(f.AssessmentTier),
-		ScanID:                 f.ScanID,
-		Category:               f.Category,
+		Summary:                f.Summary,
+		EvidenceURI:            f.EvidenceURI,
 		ScanEndpointID:         f.ScanEndpointID,
 		BaselineExecutionID:    baseID,
 		MutatedExecutionID:     mutID,
-		EvidenceURI:            f.EvidenceURI,
-		Summary:                f.Summary,
-		EvidenceInspection:     parseFindingEvidenceInspection(f),
 		CreatedAt:              f.CreatedAt,
+		EvidenceInspection:     parseFindingEvidenceInspectionList(f),
 	}
 }
 

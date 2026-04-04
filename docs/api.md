@@ -240,7 +240,9 @@ Lists stored HTTP exchanges for the scan. **Response shape:** JSON object with *
 | `mutation_rule_id` | Rule id for mutated rows (empty for baseline). |
 | `candidate_key` | Mutation work-item key for **mutated** rows only (resume/dedup); empty for baseline. |
 | `request_summary` | Concise view: `method`, `url_short` (length-capped from stored URL), `header_count`, `body_byte_length` (derived from the **same** redacted persisted fields as detail `request`). |
-| `response_summary` | Concise view: `status_code`, `content_type`, `header_count`, `body_byte_length` (aligned with detail `response`). |
+| `response_summary` | Concise view: **`status_code`** (same integer as persisted HTTP status; use list filters `response_status` against this value), `content_type`, `header_count`, `body_byte_length` (aligned with detail `response`). |
+
+**List vs detail:** Shared keys follow the same order as **`ExecutionRead`** except list rows omit **`request`** / **`response`** body objects. **`request_summary`** / **`response_summary`** on a list item must match the corresponding fields on **`GET .../executions/{executionID}`** for the same row (redaction rules identical).
 
 **Pagination (keyset cursor):** `meta.limit` echoes the applied page size (default **50**, maximum **200**). `meta.has_more` is true when more rows exist. `meta.next_cursor` is an opaque string: pass it as **`cursor`** on the next request (with the **same** `sort`, `order`, and narrow filters) to continue. Ordering is deterministic: primary sort key, then `created_at`, then row `id`. Cursors are validated against `sort` and `order`; a mismatched cursor returns `400` `invalid_cursor`.
 
@@ -264,7 +266,7 @@ Returns one **execution read** object (full redacted `request` / `response` plus
 
 Lists findings for the scan. **Response shape:** object with **`items`** (**finding list** rows) and **`meta`** (same pagination fields as executions).
 
-Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each **finding list** row is optimized for triage: **`rule_id`**, **`severity`**, **`rule_declared_confidence`**, **`assessment_tier`** appear early in the JSON; then **`scan_id`**, **`category`**, endpoint and execution linkage, **`evidence_uri`**, **`summary`**, optional **`evidence_inspection`** (matcher pass/fail lines and diff point count), and **`created_at`**. The list does **not** include raw **`evidence_summary`** JSON (use **`GET /v1/findings/{findingID}`** for the full read model including that blob).
+Rows are produced only after a mutation pass when matchers pass with complete diff evaluation. Each **finding list** row mirrors **`FindingRead` field order** for shared keys (without **`evidence_summary`**): **`id`**, **`scan_id`**, **`rule_id`**, **`category`**, **`severity`**, **`rule_declared_confidence`**, **`assessment_tier`**, **`summary`**, **`evidence_uri`**, optional **`scan_endpoint_id`**, optional merged **`baseline_execution_id` / `mutated_execution_id`**, **`created_at`**, and optional compact **`evidence_inspection`** (`diff_point_count`, **`matcher_passed`**, **`matcher_failed`** only—no **`matcher_outcomes`** array). Execution linkage is **only** on the list row; the list inspection object does not repeat those IDs. The list does **not** include raw **`evidence_summary`** (use **`GET /v1/findings/{findingID}`** for the full read model and per-matcher rows).
 
 **Pagination:** Same cursor model as executions (`limit` default 50, max 200; `cursor` + `meta.next_cursor`). Deterministic tie-break: after primary sort, `created_at`, then `id`.
 
@@ -278,7 +280,9 @@ Rows are produced only after a mutation pass when matchers pass with complete di
 
 Optional **filter** query parameters (all exact match, ANDed with pagination): `assessment_tier` (**`confirmed`**, **`tentative`**, or **`incomplete`**), **`severity`** (**`info`**, **`low`**, **`medium`**, **`high`**, **`critical`**), **`rule_declared_confidence`** (**`high`**, **`medium`**, **`low`**), **`rule_id`**, **`scan_endpoint_id`** (UUID of an imported endpoint row; limits findings to that operation). Invalid enum-like values or a bad UUID for **`scan_endpoint_id`** return `400` `invalid_filter`.
 
-**List vs detail:** **`GET /v1/findings/{findingID}`** returns **`FindingRead`**: all persisted columns including optional **`evidence_summary`** plus **`evidence_inspection`**.
+**List vs detail:** **`GET /v1/findings/{findingID}`** returns **`FindingRead`**: all persisted columns including optional **`evidence_summary`** plus full **`evidence_inspection`** (sorted **`matcher_outcomes`** and execution linkage inside the block when present). List rows use the compact inspection counts only; per-matcher lines and the raw JSON blob are **detail-only**.
+
+**Limitation:** Clients that relied on **`matcher_outcomes`** inside list **`evidence_inspection`** must call **`GET /v1/findings/{id}`** for those rows.
 
 ## Findings
 
