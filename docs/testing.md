@@ -10,7 +10,7 @@ make release-candidate-proof
 
 **Requirements:** Docker, `curl`, `jq`, Go; run from repository root. Default compose ports are **54334**, **18080**, **18081**, **8080** (see **Local Docker prerequisite summary** below). To exercise **PostgreSQL integration tests** inside `go test`, export **`AXIOM_TEST_DATABASE_URL`** to a dedicated database before running the Makefile target (otherwise those tests are skipped when the variable is unset).
 
-Release notes template: [CHANGELOG.md](../CHANGELOG.md). Positioning: [comparison.md](comparison.md).
+Release notes template: [CHANGELOG.md](../CHANGELOG.md). Positioning: [comparison.md](comparison.md). Expected benchmark outcomes (Axiom-only): [benchmark-results.md](benchmark-results.md).
 
 ## CI vs local
 
@@ -41,6 +41,8 @@ Use this table before release to see what is actually exercised; it does not rep
 | Builtin rule tier / **`bench_*`** / **`bench_summary_matrix`** | no | no | yes |
 
 **Environment-dependent:** CI needs the workflow Postgres service. Local flows need Docker (or equivalent), free default ports, **`curl`**, **`jq`**, and matching **`go`**. **`go test`** without **`AXIOM_TEST_DATABASE_URL`** skips postgres integration packages (see **Without Postgres** below). If **`AXIOM_TEST_DATABASE_URL`** is set to a **down** database, postgres integration tests **fail**; unset the variable or point it at a live Postgres instance. **`bash -n`** does not execute scripts; a broken **`jq`** filter could still pass CI until local Docker runs or someone executes the script by hand.
+
+**Port contention:** **`make e2e-local`** and **`make benchmark-findings-local`** both bind **`AXIOM_HTTP_ADDR`** (default **`127.0.0.1:8080`**). Run them **sequentially**, or use **`make release-candidate-proof`**, or set non-conflicting **`AXIOM_HTTP_ADDR`** / **`AXIOM_URL`** per script docs.
 
 ### Local Docker prerequisite summary (e2e + benchmark)
 

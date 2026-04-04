@@ -36,7 +36,7 @@ make e2e-local
 make benchmark-findings-local
 ```
 
-Full **release-candidate** recipe: `make release-candidate-proof` (see [docs/testing.md](docs/testing.md)).
+Full **release-candidate** recipe: `make release-candidate-proof` (see [docs/testing.md](docs/testing.md)). Expected **benchmark** rows per V1 family: [docs/benchmark-results.md](docs/benchmark-results.md).
 
 ## Reporting issues
 

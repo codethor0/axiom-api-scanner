@@ -24,6 +24,8 @@ All notable changes are documented here. The format is loose; versions match git
 - README quickstart and reproducible paths.
 - OSS pack: `CONTRIBUTING.md`, `SECURITY.md`, `ROADMAP.md`, `LICENSE`, this changelog.
 - Comparative positioning: `docs/comparison.md`.
+- Axiom-only benchmark table: `docs/benchmark-results.md`.
+- Issue templates: `.github/ISSUE_TEMPLATE/`.
 
 ### Notes
 

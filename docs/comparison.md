@@ -4,29 +4,39 @@ This document is **scoped** to what **Axiom** ships **today**: a **safe-by-defau
 
 ## Category we are trying to win
 
-**Evidence-first, low-blast-radius API abuse triage** for teams that already have (or can import) **OpenAPI**, need **clear findings** (`severity`, `assessment_tier`, `rule_declared_confidence`, evidence payloads), and want **deterministic, safe** mutation families—not full generic DAST coverage on day one.
+**Evidence-first, low-blast-radius API abuse triage** for **OpenAPI-first** engineering teams: clear findings (`severity`, `assessment_tier`, `rule_declared_confidence`, evidence payloads), **deterministic** bounded mutations, and **operator-friendly** read paths—not a generic “scan everything” DAST on day one.
 
 ## V1 mutation / finding families (current)
 
-Aligned with **`rule_family_coverage`** vocabulary in the API:
+Aligned with **`rule_family_coverage`** in the API (see [benchmark-results.md](benchmark-results.md) for expected benchmark outcomes):
 
-| Family | Intent |
+| Family (positioning) | Intent |
 | --- | --- |
-| **IDOR path or query swap** | Path/query identifier manipulation (broken object level authorization class). |
-| **Mass assignment / privilege injection** | Unsafe mass-assignment style probes where rules allow. |
+| **IDOR path/query swap** | Path/query identifier manipulation (BOLA / IDOR class). |
+| **Mass assignment privilege injection** | Unsafe mass-assignment style probes where rules allow. |
 | **Path normalization bypass** | Normalization-sensitive path variants. |
-| **Rate limit header rotation** | Controlled header rotation around rate-limit signals (bounded; target-dependent). |
+| **Rate limit header rotation** | Controlled header rotation around rate-limit signals (bounded; **target-dependent**). |
 
 Builtin example rules live under **`rules/builtin/`**; see [rule-authoring.md](rule-authoring.md).
 
-## What broader tools typically add (honest gap)
+## Reference landscape (category level only)
 
-General DAST and API-security products often emphasize:
+Other tools **often** emphasize broader **API definition** imports, **larger** attack catalogs, or **enterprise** workflows. Examples frequently cited in the market (not exhaustive, not version-pinned here):
 
-- **More input surfaces:** SOAP/WSDL, GraphQL, Postman collections, traffic-based discovery, **broader** active scanning defaults.
-- **Larger rule/attack catalogs** and **enterprise** workflows (ticketing, dashboards, blocking proxies).
+| Class | What they tend to optimize for (high level) |
+| --- | --- |
+| **OWASP ZAP** API automation | API definitions (e.g. OpenAPI) feeding **API-tuned** scanning; wider format and workflow coverage than Axiom V1. |
+| **Burp Suite** API scanning | API imports (e.g. OpenAPI, WSDL, collections), professional **consolidated** workflow. |
+| **StackHawk** | **Discovery** and spec-oriented developer workflows, CI integration. |
+| **42Crunch** | **Contract** audit, runtime testing, and API protection product lines. |
 
-Axiom **does not** match that breadth in V1. The **wedge** is narrower: **OpenAPI-first**, **explicit safety modes**, **stored executions + findings** with **stable read APIs** and **navigation hints** for operators.
+Axiom **does not** claim parity with those scopes. It targets the **narrow wedge** above with **explicit safety modes**, **stored evidence**, and **stable HTTP read models**.
+
+## What Axiom does not do yet (honest gap)
+
+- **Not** a full replacement for broad DAST or every API input/format.
+- **Not** maximum attack surface by default; **safe V1** is intentional.
+- **Not** a substitute for authorization to test targets or for org policy/legal review.
 
 ## Proof expectations (factual)
 

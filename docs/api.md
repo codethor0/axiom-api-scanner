@@ -1,6 +1,6 @@
 # HTTP API (control plane)
 
-**Scope and positioning:** [comparison.md](comparison.md) (V1 families, proof expectations, honest gaps vs broader DAST tools).
+**Scope and positioning:** [comparison.md](comparison.md) (V1 families, proof expectations, honest gaps vs broader DAST tools). **Reproducible benchmark expectations:** [benchmark-results.md](benchmark-results.md).
 
 Base path: `/v1`
 

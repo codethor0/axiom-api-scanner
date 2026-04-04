@@ -1,6 +1,6 @@
 # Axiom API Scanner
 
-Axiom is a safe-by-default, evidence-driven API scanner for **authorized** security testing. It targets API logic flaws (for example broken object level authorization, mass assignment, selected authorization bypass patterns, and controlled rate-limit checks) with reproducible proof artifacts, bounded scope, and explicit safety modes.
+Axiom is a safe-by-default, **evidence-first**, **low-blast-radius** API abuse scanner for **OpenAPI-first** workflows and **authorized** testing. It focuses on a **bounded V1** set of families (IDOR path/query swap, mass assignment privilege injection, path normalization bypass, rate limit header rotation)—not generic “scan everything” DAST. Details: [docs/comparison.md](docs/comparison.md).
 
 **Release candidate:** **`v0.1.0-rc.1`** is documented in [CHANGELOG.md](CHANGELOG.md). Positioning versus broader tools is in [docs/comparison.md](docs/comparison.md). **License:** [LICENSE](LICENSE) (MIT).
 
@@ -94,6 +94,23 @@ make release-candidate-proof
 
 **Note:** `bash -n` in CI checks **shell syntax only**, not runtime behavior of Docker scripts.
 
+### Expected outputs (quick sanity)
+
+| Command | Success signal |
+| --- | --- |
+| `make e2e-local` | Final line: `OK: local e2e validation passed (httpbin path + orchestrator smoke).` |
+| `make benchmark-findings-local` | Final line: `OK: finding-quality benchmark passed (httpbin + rate stub, four V1 families with honest httpbin no-finding for rate limit).` |
+| `make release-candidate-proof` | Ends with `release-candidate-proof: OK (see also CHANGELOG.md and docs/comparison.md).` |
+
+**Finding read** (detail JSON, richer than list rows): [docs/api.md](docs/api.md#get-v1findingsfindingid). **Benchmark matrix:** expected rows per family: [docs/benchmark-results.md](docs/benchmark-results.md).
+
+### Release checklist (maintainers, before `v0.1.0-rc.1` tag)
+
+1. `main` matches the intended commit; **`make release-candidate-proof`** green on that commit from a clean tree.
+2. Optionally: `export AXIOM_TEST_DATABASE_URL=...` and `go test ./internal/storage/postgres/... -count=1 -v` (integration tests).
+3. `CHANGELOG.md` **0.1.0-rc.1** section accurate; GitHub Release text can copy from it.
+4. Tag `v0.1.0-rc.1` and publish Release (no push in this repo until explicitly requested).
+
 ## Continuous integration
 
 Push and pull requests on `main` run GitHub Actions per [.github/workflows/ci.yml](.github/workflows/ci.yml). **Proof matrix** (what runs where): [docs/testing.md](docs/testing.md#proof-matrix-ci-vs-local-vs-environment).
@@ -103,6 +120,7 @@ Push and pull requests on `main` run GitHub Actions per [.github/workflows/ci.ym
 | Document | Purpose |
 | --- | --- |
 | [docs/comparison.md](docs/comparison.md) | Positioning vs broader tools; V1 families; proof expectations |
+| [docs/benchmark-results.md](docs/benchmark-results.md) | Reproducible local benchmark; expected outcomes per V1 family |
 | [CHANGELOG.md](CHANGELOG.md) | Release candidate and version notes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute and report issues |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
