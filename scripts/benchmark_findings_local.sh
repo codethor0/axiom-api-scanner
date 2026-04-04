@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Fixed local finding-quality benchmark: same stack as e2e-local (httpbin + Postgres + rules/builtin).
-# Covers all four supported V1 mutation families via testdata/e2e/httpbin-openapi.yaml + rule outcomes:
-#   - IDOR + path normalization: similarity@0.85 -> tentative + assessment notes weak_body_similarity_matcher + similarity_min_score_0.85
-#   - Mass assignment: strong matchers -> confirmed
-#   - Rate-limit header rotation: mutated httpbin responses do not satisfy header-diff matcher -> expect zero findings
+# Fixed local finding-quality benchmark: Postgres + httpbin + optional nginx rate-limit stub (compose).
+# Scan A (httpbin): IDOR + path norm (two GET templates) + mass; rate-limit rule runs on httpbin but no finding.
+# Scan B (127.0.0.1:18081 stub): one GET /rate-probe; builtin rate-limit rule -> confirmed finding (header differs).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,6 +11,7 @@ COMPOSE_FILE="$ROOT/deploy/e2e/docker-compose.yml"
 export COMPOSE_FILE
 
 HTTPBIN_URL="${HTTPBIN_URL:-http://127.0.0.1:18080}"
+RATE_STUB_URL="${RATE_STUB_URL:-http://127.0.0.1:18081}"
 AXIOM_URL="${AXIOM_URL:-http://127.0.0.1:8080}"
 DATABASE_URL="${DATABASE_URL:-postgres://axiom:axiom@127.0.0.1:54334/axiom_e2e?sslmode=disable}"
 
@@ -30,7 +29,7 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-docker compose -f "$COMPOSE_FILE" up -d axiom-pg httpbin
+docker compose -f "$COMPOSE_FILE" up -d axiom-pg httpbin rate-limit-bench
 
 for i in $(seq 1 60); do
   if docker compose -f "$COMPOSE_FILE" exec -T axiom-pg pg_isready -U axiom -d axiom_e2e >/dev/null 2>&1; then
@@ -72,6 +71,14 @@ for i in $(seq 1 60); do
 done
 
 curl -sf "$HTTPBIN_URL/get" | jq -e .url >/dev/null
+curl -sf "$RATE_STUB_URL/rate-probe" >/dev/null
+# Baseline vs rotated identity: header must change (stub maps X-Forwarded-For 127.0.0.2 -> 7, default -> 10).
+H_BASE="$(curl -sD - -o /dev/null "$RATE_STUB_URL/rate-probe" | tr -d '\r' | grep -i '^X-RateLimit-Remaining:' | awk '{print $2}')"
+H_ROT="$(curl -sD - -o /dev/null -H 'X-Forwarded-For: 127.0.0.2' "$RATE_STUB_URL/rate-probe" | tr -d '\r' | grep -i '^X-RateLimit-Remaining:' | awk '{print $2}')"
+if [[ -z "$H_BASE" || -z "$H_ROT" || "$H_BASE" == "$H_ROT" ]]; then
+  echo "benchmark failed: rate-limit stub must return distinct X-RateLimit-Remaining (got base='$H_BASE' rotated='$H_ROT')" >&2
+  exit 1
+fi
 
 SCAN_ID="$(
   curl -sf -X POST "$AXIOM_URL/v1/scans" \
@@ -146,10 +153,10 @@ summaries_contain() {
   fi
 }
 
-# Fixture + rules: expect exactly one row each for IDOR, mass, path norm; rate limit produces no finding on httpbin.
+# Scan A: two GET path templates (/anything/{id}, /status/200) -> two path-normalization findings; httpbin cannot satisfy rate-limit header diff.
 expect_count "$RULE_IDOR" 1
 expect_count "$RULE_MASS" 1
-expect_count "$RULE_PATHNORM" 1
+expect_count "$RULE_PATHNORM" 2
 expect_count "$RULE_RATELIMIT" 0
 
 all_tier "$RULE_IDOR" "tentative"
@@ -172,9 +179,11 @@ assert_tentative_evidence_notes() {
 }
 
 FID_IDOR="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_IDOR"'") | .id')"
-FID_PATH="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')"
+while read -r fid; do
+  [[ -n "$fid" ]] || continue
+  assert_tentative_evidence_notes "$fid"
+done < <(echo "$FINDINGS" | jq -r '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')
 assert_tentative_evidence_notes "$FID_IDOR"
-assert_tentative_evidence_notes "$FID_PATH"
 
 FID_MASS="$(echo "$FINDINGS" | jq -er '.items[] | select(.rule_id == "'"$RULE_MASS"'") | .id')"
 MASS_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_MASS")"
@@ -199,4 +208,70 @@ if [[ -z "$MEXEC" ]]; then
 fi
 curl -sf "$AXIOM_URL/v1/scans/$SCAN_ID/executions/$MEXEC" | jq -e '.phase == "mutated"' >/dev/null
 
-echo "OK: finding-quality benchmark passed (httpbin + builtin rules, four V1 families)."
+# Scan B: nginx stub exposes differential X-RateLimit-Remaining for header-rotation mutations.
+# The same GET endpoint is also eligible for path normalization (double-slash variant still matches nginx and passes weak similarity) -> tentative pathnorm + confirmed rate-limit (two findings).
+SCAN_RL="$(
+  curl -sf -X POST "$AXIOM_URL/v1/scans" \
+    -H 'Content-Type: application/json' \
+    -d '{"target_label":"bench-rate-stub","safety_mode":"safe","allow_full_execution":false,"base_url":"'"$RATE_STUB_URL"'"}' |
+    jq -er .id
+)"
+curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_RL/specs/openapi" \
+  -H 'Content-Type: application/x-yaml' \
+  --data-binary @"$ROOT/testdata/e2e/bench-rate-limit-stub.yaml" | jq -e '.count >= 1' >/dev/null
+curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_RL/executions/baseline" | jq -e '.result.status == "succeeded"' >/dev/null
+curl -sf -X POST "$AXIOM_URL/v1/scans/$SCAN_RL/executions/mutations" | jq -e '.result.status == "succeeded"' >/dev/null
+
+RUN_RL="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/run/status")"
+echo "$RUN_RL" | jq -e '.run.progression_source == "adhoc"' >/dev/null
+echo "$RUN_RL" | jq -e '.run.findings_recording_status == "complete"' >/dev/null
+echo "$RUN_RL" | jq -e '.rule_family_coverage.rate_limit_header_rotation.exercised == true' >/dev/null
+
+FINDINGS_RL="$(curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/findings")"
+expect_count_rl() {
+  local rule="$1"
+  local want="$2"
+  local got
+  got="$(echo "$FINDINGS_RL" | jq "[.items[] | select(.rule_id == \"$rule\")] | length")"
+  if [[ "$got" != "$want" ]]; then
+    echo "benchmark failed (rate stub scan): expected $want finding(s) for $rule, got $got" >&2
+    echo "$FINDINGS_RL" | jq . >&2
+    exit 1
+  fi
+}
+
+expect_count_rl "$RULE_IDOR" 0
+expect_count_rl "$RULE_MASS" 0
+expect_count_rl "$RULE_PATHNORM" 1
+expect_count_rl "$RULE_RATELIMIT" 1
+N_RL_TOTAL="$(echo "$FINDINGS_RL" | jq '.items | length')"
+if [[ "$N_RL_TOTAL" != 2 ]]; then
+  echo "benchmark failed (rate stub scan): expected exactly 2 findings, got $N_RL_TOTAL" >&2
+  echo "$FINDINGS_RL" | jq . >&2
+  exit 1
+fi
+
+bad_tier_rl="$(echo "$FINDINGS_RL" | jq "[.items[] | select(.rule_id == \"$RULE_RATELIMIT\" and .assessment_tier != \"confirmed\")] | length")"
+if [[ "$bad_tier_rl" != 0 ]]; then
+  echo "benchmark failed: rate-limit stub finding must be confirmed" >&2
+  echo "$FINDINGS_RL" | jq . >&2
+  exit 1
+fi
+bad_path_rl="$(echo "$FINDINGS_RL" | jq "[.items[] | select(.rule_id == \"$RULE_PATHNORM\" and .assessment_tier != \"tentative\")] | length")"
+if [[ "$bad_path_rl" != 0 ]]; then
+  echo "benchmark failed: stub path-normalization row must stay tentative (weak similarity)" >&2
+  echo "$FINDINGS_RL" | jq . >&2
+  exit 1
+fi
+
+FID_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_RATELIMIT"'") | .id')"
+RL_DETAIL="$(curl -sf "$AXIOM_URL/v1/findings/$FID_RL")"
+echo "$RL_DETAIL" | jq -e '(.evidence_summary.assessment_notes // []) | length == 0' >/dev/null
+FID_PATHSTUB="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_PATHNORM"'") | .id')"
+assert_tentative_evidence_notes "$FID_PATHSTUB"
+EP_RL="$(echo "$FINDINGS_RL" | jq -er '.items[] | select(.rule_id == "'"$RULE_RATELIMIT"'") | .scan_endpoint_id')"
+curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/endpoints/$EP_RL" | jq -e '.drilldown.findings_list_path | startswith("/v1/")' >/dev/null
+RL_EXEC="$(echo "$RL_DETAIL" | jq -er '.mutated_execution_id')"
+curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions/$RL_EXEC" | jq -e '.phase == "mutated"' >/dev/null
+
+echo "OK: finding-quality benchmark passed (httpbin + rate stub, four V1 families with honest httpbin no-finding for rate limit)."

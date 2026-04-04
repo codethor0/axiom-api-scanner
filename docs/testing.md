@@ -143,24 +143,28 @@ This runs `scripts/e2e_local.sh`, which:
 
 **Ad-hoc vs orchestration (`run.phase`):** After **`POST .../executions/baseline`** and **`POST .../executions/mutations`**, persisted **`run_phase`** remains the default **`planned`**; **`summary` / `progress`** counters and execution/finding rows still reflect completed work. **`GET .../run/status`** shows **`run.progression_source == "adhoc"`**, **`run.findings_recording_status == "complete"`** when the mutation pass succeeded, and **`run.phase == "planned"`** for that first scan. The orchestrated second scan shows **`run.progression_source == "orchestrator"`** and **`run.phase == "findings_complete"`**. Only **`POST .../run`** advances **`run_phase`** through the orchestration graph; **`progression_source`** distinguishes ad-hoc driver usage without new storage.
 
-### Finding-quality benchmark (local, httpbin)
+### Finding-quality benchmark (local, httpbin and nginx rate stub)
 
 **Entrypoint:** `make benchmark-findings-local` (runs `scripts/benchmark_findings_local.sh`).
 
-**Stack:** Same as `e2e-local`: `deploy/e2e/docker-compose.yml` (`axiom-pg` + httpbin), `bin/axiom-api-bench`, `DATABASE_URL` / `AXIOM_RULES_DIR` / migrations as in the e2e script. Target: **`testdata/e2e/httpbin-openapi.yaml`** and **`rules/`** ( **`rules/builtin/*.example.yaml`** ).
+**Stack:** `deploy/e2e/docker-compose.yml` starts **`axiom-pg`**, **`httpbin`** (`127.0.0.1:18080`), and **`rate-limit-bench`** (`nginx:alpine` on **`127.0.0.1:18081`**, config in **`deploy/e2e/rate-limit-bench/nginx.conf`**). **`scripts/e2e_local.sh`** still starts only Postgres + httpbin; the benchmark additionally needs the stub for scan B. Target rules: **`rules/builtin/*.example.yaml`**.
 
-**V1 families exercised (same single scan):**
+**Scan A (httpbin, `testdata/e2e/httpbin-openapi.yaml`):** **`GET /anything/{id}`**, **`GET /status/200`**, **`POST /post`**. Imports declare **`ApiKeyAuth`** on **`/anything/{id}`** for IDOR planner eligibility.
 
-| Family | Builtin rule id | Proven outcome on this fixture |
+| Family | Builtin rule id | Proven outcome (scan A) |
 | --- | --- | --- |
-| IDOR path swap | **`axiom.idor.path_swap.v1`** | Exactly **one** finding, **`assessment_tier`** **`tentative`**; **`response_body_similarity`** @ **0.85** yields assessment notes **`weak_body_similarity_matcher`** and **`similarity_min_score_0.85`** (mirrored in **`summary`** and **`evidence_summary.assessment_notes`**). **`confirmed`** requires no weak-signal matchers (e.g. **`similarity.min_score` >= 0.9** and no body-substring matcher). |
-| Mass assignment | **`axiom.mass.privilege_merge.v1`** | Exactly **one** finding, **`confirmed`**; **`evidence_summary.assessment_notes`** empty/absent. |
-| Path normalization | **`axiom.pathnorm.variant.v1`** | Exactly **one** finding, **`tentative`**; same weak-similarity note pair as IDOR on this fixture. |
-| Rate-limit headers | **`axiom.ratelimit.header_rotate.v1`** | **No** finding row: mutation may run, but **`response_header_differs_from_baseline`** on **`X-RateLimit-Remaining`** does not succeed against httpbin’s responses (header absent or unchanged). This is an intentional **no-finding** path, not a skipped family. |
+| IDOR path swap | **`axiom.idor.path_swap.v1`** | **One** finding, **`tentative`**, weak-similarity assessment note pair on **`summary`** / **`evidence_summary`**. |
+| Mass assignment | **`axiom.mass.privilege_merge.v1`** | **One** **`confirmed`**; **`assessment_notes`** empty/absent. |
+| Path normalization | **`axiom.pathnorm.variant.v1`** | **Two** findings (**`/anything/{id}`** and **`/status/200`**), both **`tentative`** (builtin uses **`response_body_similarity`** @ **0.85**). |
+| Rate-limit headers | **`axiom.ratelimit.header_rotate.v1`** | **No** finding: httpbin responses do not satisfy **`response_header_differs_from_baseline`** for **`X-RateLimit-Remaining`** (fixture-limited, honest **no-finding**). |
 
-**Read-path checks:** asserts **`GET .../run/status`** (**`progression_source`** **`adhoc`**, **`findings_recording_status`** **`complete`**), **`GET .../endpoints/{id}`** ( **`investigation`** + **`drilldown`** ), **`GET .../findings/{id}`** (tentative rows include the weak-similarity **`assessment_notes`**; confirmed mass assignment omits them), and **`GET .../executions/{id}`** for a linked mutated execution.
+**Scan B (stub, `testdata/e2e/bench-rate-limit-stub.yaml`):** single **`GET /rate-probe`** with **`base_url` `http://127.0.0.1:18081`**. Nginx maps **`X-Forwarded-For: 127.0.0.2`** (the builtin rotation value) to **`X-RateLimit-Remaining: 7`**, default clients to **`10`**, so the rate-limit rule can produce a **`confirmed`** finding. The same endpoint remains eligible for path normalization; the double-slash variant still matches **`location /rate-probe`** in nginx, so scan B also yields **one** **`tentative`** path-normalization row (weak similarity). **Total: two** findings on scan B (pathnorm + rate limit).
 
-**What it does not prove:** Query-swap IDOR variants (not in this spec), real rate-limit appliances, **`X-RateLimit-Remaining`** semantics on production targets, or coverage beyond the four builtin examples. Single-endpoint concurrency and large imports are out of scope.
+**Read-path checks:** **`GET .../run/status`** (**`adhoc`**, **`findings_recording_status` `complete`**; scan B asserts **`rule_family_coverage.rate_limit_header_rotation.exercised`**), endpoint detail, finding detail (including **`evidence_summary.assessment_notes`** parity for tentatives, empty for confirmed rate row), execution detail.
+
+**What it does not prove:** Production CDN rate-limit behavior, multi-operation OpenAPI `servers` mixing, or coverage beyond these two local targets. The nginx map is **test-only**; it is not a general rate-limit emulator.
+
+**Limitations:** **`make e2e-local`** does not require the stub; only **`make benchmark-findings-local`** pulls **`nginx:alpine`** if missing. CI does **not** run this Docker flow.
 
 **Prerequisites:** `docker`, `curl`, `jq`, `go`.
 

@@ -38,3 +38,9 @@ paths:
       responses:
         "200":
           description: OK
+  /status/200:
+    get:
+      summary: fixed 200 status
+      responses:
+        "200":
+          description: OK
