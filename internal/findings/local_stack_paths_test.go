@@ -24,6 +24,7 @@ func TestLocalStackRepoFilesPresent(t *testing.T) {
 		"testdata/e2e/bench-rate-limit-stub.yaml",
 		"scripts/local_stack_preflight.sh",
 		"scripts/benchmark_findings_local.sh",
+		"scripts/benchharness/main.go",
 		"scripts/e2e_local.sh",
 	}
 	for _, p := range paths {

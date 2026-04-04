@@ -360,6 +360,45 @@ curl -sf "$AXIOM_URL/v1/scans/$SCAN_RL/executions/$RL_EXEC" | jq -e '.phase == "
 
 echo "    bench_harness scan=B pathnorm_fixture_artifact codes=${BENCH_CODES_STUB_PATHNORM_TENTATIVE}"
 
+bench_rule_tier_first() {
+  local items_json="$1"
+  local rule="$2"
+  echo "$items_json" | jq -r --arg r "$rule" '[.items[] | select(.rule_id == $r)][0].assessment_tier // empty'
+}
+
+bench_emit_matrix_row() {
+  local phase="$1"
+  local target="$2"
+  local items_json="$3"
+  local rule="$4"
+  local cnt tier outcome family
+  cnt="$(echo "$items_json" | jq --arg r "$rule" '[.items[] | select(.rule_id == $r)] | length')"
+  tier="$(bench_rule_tier_first "$items_json" "$rule")"
+  outcome="$( ( cd "$ROOT" && go run ./scripts/benchharness -outcome-class -target "$target" -rule "$rule" -tier "$tier" -count "$cnt" ) )"
+  family="$( ( cd "$ROOT" && go run ./scripts/benchharness -rule-family -rule "$rule" ) )"
+  echo "bench_summary v=1 phase=$phase target_label=$target rule_id=$rule family=$family finding_rows=$cnt outcome=$outcome"
+}
+
+emit_benchmark_summary_matrix() {
+  echo "==> bench_summary_matrix (key=value lines; harness-only; see docs/testing.md)"
+  local r
+  for r in "$RULE_IDOR" "$RULE_MASS" "$RULE_PATHNORM" "$RULE_RATELIMIT"; do
+    bench_emit_matrix_row scan_A "$BENCH_TARGET_HTTPBIN" "$FINDINGS" "$r"
+  done
+  for r in "$RULE_IDOR" "$RULE_MASS" "$RULE_PATHNORM" "$RULE_RATELIMIT"; do
+    bench_emit_matrix_row scan_B "$BENCH_TARGET_STUB" "$FINDINGS_RL" "$r"
+  done
+  echo "bench_summary v=1 phase=ci_github_actions finding_rows=n/a outcome=outcome_not_in_matrix note=go_vet_golangci_go_test_postgres_only"
+}
+
+emit_benchmark_summary_matrix
+
+echo "==> bench_outcome_legend (human-readable; same strings as outcome= in matrix)"
+echo "    outcome_confirmed_useful: matchers passed; tier confirmed; empty interpretation_hints on row."
+echo "    outcome_tentative_weak_signal: matchers passed; tier tentative (e.g. weak body similarity policy); interpretation_hints on row."
+echo "    outcome_fixture_limited_no_row: expected zero rows because this target cannot satisfy matchers (httpbin + rate header rule)."
+echo "    outcome_not_exercised_on_target: zero rows because this scan has no finding for that rule (planner/import); expected for idor/mass on stub-only import."
+
 echo "OK: finding-quality benchmark passed (httpbin + rate stub, four V1 families with honest httpbin no-finding for rate limit)."
-echo "==> benchmark exercised: scan_A id=$SCAN_ID (4 findings; 0 rows for $RULE_RATELIMIT on httpbin); scan_B id=$SCAN_RL (2 findings). bench_* harness lines above; interpretation_hints on API rows are scanner-policy only (see docs/testing.md)."
-echo "==> note: GitHub Actions runs go test/vet/lint only; this Docker benchmark stays local."
+echo "==> benchmark exercised: scan_A id=$SCAN_ID (4 findings; 0 rows for $RULE_RATELIMIT on httpbin); scan_B id=$SCAN_RL (2 findings). bench_* + bench_summary above; API interpretation_hints are scanner-policy only."
+echo "==> note: GitHub Actions runs go test/vet/lint (+ postgres tests); this Docker benchmark stays local."

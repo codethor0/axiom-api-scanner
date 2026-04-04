@@ -193,6 +193,17 @@ This runs `scripts/e2e_local.sh`, which:
 | **`bench_fixture_context_*`** | Confirmed rows tied to **mass on httpbin** or **rate header differential on nginx stub** (what the fixture enables, without changing tier logic). |
 | **`bench_no_finding_absent_row`**, **`bench_fixture_limit_httpbin_rate_header_matcher_unsatisfied`** | Expected **no row** for rate-limit rule on httpbin after mutations (matchers never satisfied). |
 
+**`bench_summary_matrix` (end of successful run):** eight **`bench_summary v=1`** lines (four builtin rules **`×`** scan A + scan B) with stable **`key=value`** fields: **`phase`** (`scan_A` \| `scan_B`), **`target_label`**, **`rule_id`**, **`family`** (same tokens as **`rule_family_coverage`** in [docs/api.md](api.md): `idor_path_or_query_swap`, `mass_assignment_privilege_injection`, `path_normalization_bypass`, `rate_limit_header_rotation`), **`finding_rows`**, **`outcome`**. Outcome strings come from **`findings.BenchmarkOutcomeClass`** (see **`internal/findings/benchmark_outcome.go`** and **`benchmark_outcome_test.go`**):
+
+| **`outcome=`** | Meaning |
+| --- | --- |
+| **`outcome_confirmed_useful`** | At least one row; **`confirmed`** tier (matchers passed, no weak-signal cap on that row). |
+| **`outcome_tentative_weak_signal`** | At least one row; **`tentative`** (or **`incomplete`**) tier. |
+| **`outcome_fixture_limited_no_row`** | **Zero** rows **and** this rule is the httpbin rate-limit case (target cannot produce header differential). |
+| **`outcome_not_exercised_on_target`** | **Zero** rows because this scan produced no finding for that rule (e.g. idor/mass on stub-only import). |
+
+A ninth line documents **CI**: **`phase=ci_github_actions`**, **`outcome=outcome_not_in_matrix`**, meaning the matrix is **not** produced in GitHub Actions (Docker benchmark only). A short **`bench_outcome_legend`** block repeats the four outcomes in prose. **`go run ./scripts/benchharness -outcome-class`** and **`-rule-family`** emit single values for scripts.
+
 **Read-path checks:** **`GET .../run/status`** (**`adhoc`**, **`findings_recording_status` `complete`**; scan B asserts **`rule_family_coverage.rate_limit_header_rotation.exercised`**), endpoint detail, finding detail (**`evidence_summary.assessment_notes`** and **`interpretation_hints`** parity with **`summary`** for tentatives; both empty for confirmed mass/rate rows), execution detail, plus harness **`bench_*`** lines and **`go run ./scripts/benchharness`** parity for each expected row.
 
 **What it does not prove:** Production CDN rate-limit behavior, multi-operation OpenAPI `servers` mixing, or coverage beyond these two local targets. The nginx map is **test-only**; it is not a general rate-limit emulator.
