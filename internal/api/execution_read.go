@@ -12,6 +12,7 @@ const executionURLShortMax = 120
 
 // ExecutionListItem is the list projection for GET .../executions: phase, rule linkage, summaries, and timing only
 // (no request/response body or header maps). GET .../executions/{id} returns the full ExecutionRead.
+// mutation_rule_id is empty for baseline rows; list filters accept rule_id or mutation_rule_id (same semantics).
 type ExecutionListItem struct {
 	ID              string `json:"id"`
 	ScanID          string `json:"scan_id"`

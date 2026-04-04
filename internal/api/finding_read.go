@@ -32,10 +32,14 @@ type FindingListEvidenceInspection struct {
 	DiffPointCount int `json:"diff_point_count,omitempty"`
 	MatcherPassed  int `json:"matcher_passed,omitempty"`
 	MatcherFailed  int `json:"matcher_failed,omitempty"`
+	// MatcherTotal is matcher_passed + matcher_failed when any matcher rows exist (deterministic triage without summing client-side).
+	MatcherTotal int `json:"matcher_total,omitempty"`
 }
 
 // FindingListItem is the list projection for GET .../findings. Field order matches FindingRead for shared keys
 // (excluding evidence_summary and full detail-only inspection). No raw evidence_summary JSON; use GET /v1/findings/{id}.
+//
+// Orthogonal axes match FindingRead: severity = impact; rule_declared_confidence = YAML confidence; assessment_tier = post-run sufficiency.
 type FindingListItem struct {
 	ID                     string                         `json:"id"`
 	ScanID                 string                         `json:"scan_id"`
@@ -147,10 +151,12 @@ func parseFindingEvidenceInspectionList(f findings.Finding) *FindingListEvidence
 	if diffN == 0 && passed == 0 && failed == 0 {
 		return nil
 	}
+	tot := passed + failed
 	return &FindingListEvidenceInspection{
 		DiffPointCount: diffN,
 		MatcherPassed:  passed,
 		MatcherFailed:  failed,
+		MatcherTotal:   tot,
 	}
 }
 

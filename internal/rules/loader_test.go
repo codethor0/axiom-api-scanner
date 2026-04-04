@@ -42,6 +42,39 @@ tags: [test]
 	}
 }
 
+func TestParseDocuments_invalidSeverity(t *testing.T) {
+	const doc = `
+id: bad.sev
+name: Bad
+category: test
+severity: super-critical
+confidence: high
+safety:
+  mode: passive
+  destructive: false
+target:
+  methods: [GET]
+  where: x
+prerequisites: []
+mutations:
+  - kind: replace_query_param
+    param: a
+    from: b
+    to: c
+matchers:
+  - kind: status_code_unchanged
+references:
+  - r
+`
+	_, err := ParseDocuments([]byte(doc))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "severity") {
+		t.Fatal(err)
+	}
+}
+
 func TestParseDocuments_invalidSafetyMode(t *testing.T) {
 	const doc = `
 id: bad.safety

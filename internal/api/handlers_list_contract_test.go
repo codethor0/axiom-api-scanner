@@ -505,7 +505,7 @@ func TestFindingsList_evidenceInspectionCompactCounts(t *testing.T) {
 		t.Fatalf("items %+v", env.Items)
 	}
 	ins := env.Items[0].EvidenceInspection
-	if ins == nil || ins.MatcherPassed != 1 || ins.MatcherFailed != 1 || ins.DiffPointCount != 1 {
+	if ins == nil || ins.MatcherPassed != 1 || ins.MatcherFailed != 1 || ins.MatcherTotal != 2 || ins.DiffPointCount != 1 {
 		t.Fatalf("ins %+v", ins)
 	}
 	var top map[string]json.RawMessage

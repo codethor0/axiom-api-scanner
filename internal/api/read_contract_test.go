@@ -183,7 +183,11 @@ func TestContract_findingReadAndEvidence_wireKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	evSum, serr := findings.MarshalEvidenceSummaryJSON(findings.EvidenceSummaryV1{
-		MatcherOutcomes: []findings.MatcherOutcomeSummary{{Index: 0, Kind: "k", Passed: true}},
+		RuleID:                 "rule.one",
+		AssessmentTier:         "tentative",
+		RuleSeverity:           "medium",
+		RuleDeclaredConfidence: "medium",
+		MatcherOutcomes:        []findings.MatcherOutcomeSummary{{Index: 0, Kind: "k", Passed: true}},
 	})
 	if serr != nil {
 		t.Fatal(serr)
@@ -228,6 +232,20 @@ func TestContract_findingReadAndEvidence_wireKeys(t *testing.T) {
 	}
 	if _, ok := ftop["evidence_inspection"]; !ok {
 		t.Fatal("expected evidence_inspection on finding read")
+	}
+	rawEv, ok := ftop["evidence_summary"]
+	if !ok {
+		t.Fatal("expected evidence_summary on finding read")
+	}
+	var ev findings.EvidenceSummaryV1
+	if uerr := json.Unmarshal(rawEv, &ev); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if ev.RuleSeverity != "medium" || ev.ImpactSeverity != "medium" {
+		t.Fatalf("evidence_summary impact axes: rule_severity=%q impact_severity=%q", ev.RuleSeverity, ev.ImpactSeverity)
+	}
+	if ev.AssessmentTier != "tentative" || ev.RuleDeclaredConfidence != "medium" {
+		t.Fatalf("evidence_summary tier/confidence: %+v", ev)
 	}
 
 	respe, err := http.Get(srv.URL + "/v1/findings/" + f.ID + "/evidence")

@@ -3,6 +3,8 @@ package rules
 import (
 	"fmt"
 	"strings"
+
+	"github.com/codethor0/axiom-api-scanner/internal/findings"
 )
 
 // Validate checks required DSL fields and value constraints.
@@ -17,11 +19,8 @@ func Validate(r Rule) error {
 	if strings.TrimSpace(r.Category) == "" {
 		errs = append(errs, "[metadata] category: must be non-empty (taxonomy bucket)")
 	}
-	if strings.TrimSpace(r.Severity) == "" {
-		errs = append(errs, "[metadata] severity: must be non-empty (impact hint for findings)")
-	}
-	if strings.TrimSpace(r.Confidence) == "" {
-		errs = append(errs, "[metadata] confidence: must be set to high, medium, or low (author-expected signal strength)")
+	if err := ValidateRuleSeverity(r); err != nil {
+		errs = append(errs, "[metadata] "+err.Error())
 	}
 	switch r.Safety.Mode {
 	case SafetyPassive, SafetySafe, SafetyFull:
@@ -60,4 +59,18 @@ func Validate(r Rule) error {
 		errs = append(errs, err.Error())
 	}
 	return NewValidationError(errs)
+}
+
+// ValidateRuleSeverity ensures YAML severity is a known finding impact bucket (distinct from confidence and post-run assessment_tier).
+func ValidateRuleSeverity(r Rule) error {
+	if strings.TrimSpace(r.Severity) == "" {
+		return fmt.Errorf("severity: must be non-empty (use info, low, medium, high, or critical — impact bucket for findings; not confidence and not assessment_tier)")
+	}
+	s := findings.Severity(strings.ToLower(strings.TrimSpace(r.Severity)))
+	switch s {
+	case findings.SeverityInfo, findings.SeverityLow, findings.SeverityMedium, findings.SeverityHigh, findings.SeverityCritical:
+		return nil
+	default:
+		return fmt.Errorf("severity: must be one of info, low, medium, high, critical (impact bucket copied to findings; orthogonal to confidence and assessment_tier) (got %q)", r.Severity)
+	}
 }

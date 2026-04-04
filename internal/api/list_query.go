@@ -138,10 +138,18 @@ func parseExecutionListFilters(r *http.Request) (storage.ExecutionListFilter, *a
 	if phase != "" && phase != "baseline" && phase != "mutated" {
 		return storage.ExecutionListFilter{}, &apiRequestError{code: "invalid_filter", message: "phase must be baseline or mutated"}
 	}
+	ruleID := strings.TrimSpace(q.Get("rule_id"))
+	mutationRuleID := strings.TrimSpace(q.Get("mutation_rule_id"))
+	if ruleID != "" && mutationRuleID != "" && ruleID != mutationRuleID {
+		return storage.ExecutionListFilter{}, &apiRequestError{code: "invalid_filter", message: "rule_id and mutation_rule_id must match when both are set"}
+	}
+	if ruleID == "" {
+		ruleID = mutationRuleID
+	}
 	filter := storage.ExecutionListFilter{
 		Phase:          phase,
 		ScanEndpointID: strings.TrimSpace(q.Get("scan_endpoint_id")),
-		RuleID:         strings.TrimSpace(q.Get("rule_id")),
+		RuleID:         ruleID,
 	}
 	if filter.ScanEndpointID != "" {
 		if _, err := uuid.Parse(filter.ScanEndpointID); err != nil {

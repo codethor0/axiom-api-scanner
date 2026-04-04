@@ -137,7 +137,7 @@ func ParseMutationFromMap(m map[string]any) (Mutation, error) {
 		mu := Mutation{Kind: kind, RotateRequestHeaders: &RotateRequestHeadersMutation{Headers: headers}}
 		return mu, mu.Validate()
 	default:
-		return Mutation{}, fmt.Errorf("mutation: unknown kind %q", kind)
+		return Mutation{}, fmt.Errorf("mutation: unknown kind %q (see supported kinds in docs/rule-authoring.md#v1-mutation-kinds)", kind)
 	}
 }
 

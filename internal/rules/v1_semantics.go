@@ -25,11 +25,14 @@ func V1Family(m Mutation) string {
 // ValidateRuleConfidence requires documented confidence labels on safe/passive/full rules.
 func ValidateRuleConfidence(r Rule) error {
 	c := strings.ToLower(strings.TrimSpace(r.Confidence))
+	if c == "" {
+		return fmt.Errorf("confidence: must be high, medium, or low (declared signal quality from authoring; not severity impact and not post-run assessment_tier)")
+	}
 	switch c {
 	case "high", "medium", "low":
 		return nil
 	default:
-		return fmt.Errorf("confidence: use only high, medium, or low (got %q)", r.Confidence)
+		return fmt.Errorf("confidence: use only high, medium, or low (orthogonal to severity impact and assessment_tier) (got %q)", r.Confidence)
 	}
 }
 

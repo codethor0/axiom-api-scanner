@@ -9,7 +9,7 @@ Rules are YAML documents. Each file may contain multiple documents. Loading walk
 | `id` | Stable identifier |
 | `name` | Human title |
 | `category` | Taxonomy bucket |
-| `severity` | Reported severity (feeds finding tier together with matchers and evidence) |
+| `severity` | **Impact bucket** for findings: `info`, `low`, `medium`, `high`, or `critical` only (feeds `findings.severity` and evidence JSON; **not** the assessment tier and **not** `confidence`) |
 | `confidence` | Declared signal quality: **`high`**, **`medium`**, or **`low`** only (stored on the rule; `low` caps findings at **tentative**) |
 | `safety.mode` | `passive`, `safe`, or `full` |
 | `safety.destructive` | Boolean |
@@ -41,7 +41,7 @@ When matchers pass with complete HTTP evidence, the service persists:
 - **`severity`** on the finding is the rule’s impact bucket (unchanged semantics).
 - **`rule_declared_confidence`** on the finding is the YAML `confidence` field (`high`/`medium`/`low`) only—it is **not** the assessment tier.
 - **`assessment_tier`** on the finding is **`confirmed`**, **`tentative`**, or **`incomplete`** (no ML). **`incomplete`** applies when baseline or mutated execution ids are missing, either side has HTTP status `0`, or the diff summary is empty. **`tentative`** applies when the rule declared `low` confidence, severity is `info` or `low`, or a weak matcher signal is configured (substring matcher, or similarity threshold under `0.9`).
-- **`evidence_summary`** (JSON, `schema_version` **1**): `rule_id`, baseline and mutated execution ids, endpoint method/path template, `matcher_outcomes` (index, kind, pass, short `summary`), `diff_points`, **`assessment_tier`**, `rule_severity`, **`rule_declared_confidence`**, optional `assessment_notes`. The JSON **`assessment_tier`** matches the column; **`rule_declared_confidence`** matches the column.
+- **`evidence_summary`** (JSON, `schema_version` **1**): `rule_id`, baseline and mutated execution ids, endpoint method/path template, `matcher_outcomes` (index, kind, pass, short `summary`), `diff_points`, **`assessment_tier`** (post-run sufficiency snapshot, same as the column), **`rule_severity`** and **`impact_severity`** (same impact bucket as YAML `severity` / finding `severity`—both keys are written for readability; legacy rows may have only `rule_severity`), **`rule_declared_confidence`** (same as column), optional `assessment_notes`. **`assessment_tier`** is **not** a substitute for **`confidence`**; **`rule_severity` / `impact_severity`** are **not** confidence or tier.
 
 Rule validation failures are returned as numbered multi-line messages (for example from `GET /v1/rules`) with bracketed categories such as `[metadata]`, `[v1 safe/passive]`, `[matchers]`.
 

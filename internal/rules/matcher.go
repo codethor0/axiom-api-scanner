@@ -167,7 +167,7 @@ func ParseMatcherFromMap(m map[string]any) (Matcher, error) {
 		mat := Matcher{Kind: kind, ResponseHeaderDiffersFromBaseline: &ResponseHeaderDiffersFromBaselineMatcher{Name: stringField(m, "name")}}
 		return mat, mat.Validate()
 	default:
-		return Matcher{}, fmt.Errorf("matcher: unknown kind %q", kind)
+		return Matcher{}, fmt.Errorf("matcher: unknown kind %q (see supported kinds in docs/rule-authoring.md#v1-matcher-kinds)", kind)
 	}
 }
 
