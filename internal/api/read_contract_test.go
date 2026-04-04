@@ -22,7 +22,7 @@ var executionReadRequired = []string{
 
 // executionListItemRequired is GET .../executions items[] (summaries only; no request/response bodies).
 var executionListItemRequired = []string{
-	"id", "scan_id", "phase", "execution_kind",
+	"id", "scan_id", "scan_endpoint_id", "phase", "execution_kind",
 	"request_summary", "response_summary",
 	"duration_ms", "created_at",
 }
@@ -334,6 +334,18 @@ func TestContract_scanRunStatus_wireKeys_withCoverageAndDiagnostics(t *testing.T
 			t.Fatalf("diagnostics.%s", k)
 		}
 	}
+	var dd map[string]json.RawMessage
+	if err := json.Unmarshal(top["drilldown"], &dd); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{
+		"scan_id", "scan_detail_path", "endpoints_inventory_path", "executions_list_path",
+		"findings_list_path", "run_status_path",
+	} {
+		if _, ok := dd[k]; !ok {
+			t.Fatalf("drilldown missing %q", k)
+		}
+	}
 }
 
 func TestContract_executionList_wireKeys(t *testing.T) {
@@ -344,7 +356,8 @@ func TestContract_executionList_wireKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ierr := mem.InsertExecutionRecord(ctx, engine.ExecutionRecord{
-		ScanID: scan.ID, Phase: engine.PhaseBaseline,
+		ScanID: scan.ID, ScanEndpointID: "33333333-3333-3333-3333-333333333333",
+		Phase:         engine.PhaseBaseline,
 		RequestMethod: "GET", RequestURL: "https://example.com/", ResponseStatus: 200,
 	}); ierr != nil {
 		t.Fatal(ierr)

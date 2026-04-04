@@ -6,6 +6,7 @@ import "fmt"
 func scanRunDrilldownHints(scanID string) ScanRunDrilldownHints {
 	return ScanRunDrilldownHints{
 		ScanID:                 scanID,
+		ScanDetailPath:         fmt.Sprintf("/v1/scans/%s", scanID),
 		EndpointsInventoryPath: fmt.Sprintf("/v1/scans/%s/endpoints", scanID),
 		ExecutionsListPath:     fmt.Sprintf("/v1/scans/%s/executions", scanID),
 		FindingsListPath:       fmt.Sprintf("/v1/scans/%s/findings", scanID),
@@ -23,5 +24,6 @@ func endpointDrilldownHints(scanID, scanEndpointID string, executionsQuery, find
 		FindingsListPath:       fmt.Sprintf("/v1/scans/%s/findings", scanID),
 		ExecutionsListQuery:    executionsQuery,
 		FindingsListQuery:      findingsQuery,
+		RunStatusPath:          fmt.Sprintf("/v1/scans/%s/run/status", scanID),
 	}
 }

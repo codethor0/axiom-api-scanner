@@ -13,6 +13,18 @@ All successful JSON responses use explicit structs. Errors use this envelope:
 }
 ```
 
+## Resource responsibilities (V1 read paths)
+
+| Resource | Role | Typical navigation |
+| --- | --- | --- |
+| **Scan** (`GET /v1/scans/{id}`) | Lifecycle, `target_label`, `safety_mode`, progress columns, `findings_count`; not orchestration diagnostics. | Entry point after create; use **`run/status`** for phase and guidance. |
+| **Scan run status** (`GET .../run/status`) | Orchestration read model: `run.phase`, progress/summary mirrors, aggregates, diagnostics, **`drilldown`** path hints. | Jump to inventory, execution/finding lists, or **scan detail** via `drilldown.scan_detail_path`. |
+| **Endpoint inventory / detail** | Imported OpenAPI operations per scan; detail adds **`investigation`** + **`drilldown`** (filtered list query fragments). | From run status or scan drilldown to inventory; from endpoint detail to filtered executions/findings and back to **run status** via `drilldown.run_status_path`. |
+| **Executions** (list / GET by id) | Stored HTTP exchanges; list is summary-only; detail is full redacted request/response. | From drilldown paths or endpoint filters; use execution id from list or finding linkage for GET detail. |
+| **Findings** (list / GET by id / evidence) | Assessment output; list is triage-only; detail includes **`evidence_summary`**; evidence route returns artifact bodies. | From scan or endpoint-filtered finding list; follow **`evidence_uri`** and ids from list rows to detail. |
+
+Duplicate numbers between **`summary`**, **`progress`**, and **`findings_summary`** are intentional mirrors for the same persisted facts (see run status invariants), not alternate estimators.
+
 ## Scans
 
 ### POST /v1/scans
@@ -63,11 +75,11 @@ Operator read model for orchestration. Returns `200` with one JSON object. **Can
 | `coverage` | Auth/security hints (no secrets). |
 | `protected_route_coverage` | **Persisted-facts only:** splits imported `scan_endpoints` rows and `execution_records` (baseline + mutated) by whether the **OpenAPI import** attached `security_scheme_hints` to the operation. Counts HTTP status buckets (**401**, **403**, **2xx**) for baseline rows on declared-secure operations only. Does **not** prove token validity, session freshness, or role coverage—only what was stored. When **`executions_repository_configured`** is `false`, HTTP counts stay zero (no join performed). |
 | `diagnostics` | `blocked_detail`, `skipped_detail`, and `consistency_detail` are **always JSON arrays** (possibly empty). Each line is `code`, optional `detail`, and optional **`category`**: **`blocked`** (import/auth precondition), **`auth_limit`** (credential gap or auth-shaped HTTP pattern; may appear in `blocked_detail` or `skipped_detail`), **`skipped`** (recorded state or coverage gap without implying storage corruption), **`inconsistent`** (only in `consistency_detail`: counters or joins disagree). **Guidance** lines do not use `category`. `phase_failed_next_step` and `resume_recommended` when `phase` is `failed`. |
-| `drilldown` | **Path-only** navigation hints for this scan (leading `/v1/...`, no scheme or host): `scan_id`, `endpoints_inventory_path`, `executions_list_path`, `findings_list_path`, `run_status_path`. Values are **derived from the request scan id** so operators can jump from run status to inventory or list routes without embedding list payloads. Same object appears on successful **`POST .../run`** responses (same shape as this `GET`). |
+| `drilldown` | **Path-only** navigation hints (leading `/v1/...`, no scheme or host): `scan_id`, **`scan_detail_path`** (`GET /v1/scans/{id}` for lifecycle/config, distinct from this run-status URL), `endpoints_inventory_path`, `executions_list_path`, `findings_list_path`, `run_status_path` (this resource). Values are **derived from the request scan id** so operators can navigate without embedding list payloads. Same object appears on successful **`POST .../run`** responses (same shape as this `GET`). |
 
 **Implementation note (performance, not wire):** For `progress` / `coverage` / `rule_family_coverage` / `protected_route_coverage`, the handler loads **`scan_endpoints`** rows needed for **V1 planner eligibility** and **declared-security** classification only (`ListScanEndpointsForRunStatus`): identity, method, path template, security hints, JSON-body flag, timestamps. It does **not** load request/response content-type columns used by **`GET .../endpoints`** inventory. Full endpoint rows are still used for OpenAPI import responses, inventory lists, and runners.
 
-**Stable wire shape (contract):** Successful `200` responses include these top-level keys in order: `scan`, `run`, `progress`, `summary`, `findings_summary`, `rule_family_coverage`, `guidance`, `coverage`, `protected_route_coverage`, `diagnostics`, `drilldown`, `compatibility`. Nested **`guidance.next_steps`**, **`diagnostics.blocked_detail`**, **`diagnostics.skipped_detail`**, and **`diagnostics.consistency_detail`** are always arrays; **`drilldown`** exposes the path-hint keys in contract tests; **`protected_route_coverage`** exposes the field keys in contract tests (including zero-valued counters). Contract tests cover successful, public-only, blocked auth, failed, execution-repo-unavailable, and other scenarios.
+**Stable wire shape (contract):** Successful `200` responses include these top-level keys in order: `scan`, `run`, `progress`, `summary`, `findings_summary`, `rule_family_coverage`, `guidance`, `coverage`, `protected_route_coverage`, `diagnostics`, `drilldown`, `compatibility`. Nested **`guidance.next_steps`**, **`diagnostics.blocked_detail`**, **`diagnostics.skipped_detail`**, and **`diagnostics.consistency_detail`** are always arrays; **`drilldown`** exposes **`scan_id`**, **`scan_detail_path`**, inventory and list paths, and **`run_status_path`** in contract tests; **`protected_route_coverage`** exposes the field keys in contract tests (including zero-valued counters). Contract tests cover successful, public-only, blocked auth, failed, execution-repo-unavailable, and other scenarios.
 
 **Protected vs public (operator meaning):** An imported operation is **declared secure** when its persisted row has non-empty `security_scheme_hints` (from OpenAPI). **Public-only** run status means `endpoints_declaring_security` is 0; the scanner may still hit targets that enforce auth outside the spec. **Declared-secure HTTP recorded** means at least one `execution_record` references a declared-secure `scan_endpoint_id` for baseline and/or mutated phase. The API does **not** classify “authenticated session verified”; it only reports configured `auth_headers`, stored requests, and stored response status codes.
 
@@ -189,7 +201,7 @@ Returns **`200`** with one **endpoint detail** object for an imported `scan_endp
 - **`drilldown`**: Path-only prefixes for this scan and endpoint (leading `/v1/...`, no host) plus **query fragments** for filtered lists:
   - `scan_id` (same as **`scan_id`** on the parent object; repeated for a self-contained drilldown block).
   - `scan_endpoint_id` (same UUID as **`id`**).
-  - `endpoints_inventory_path`, `endpoint_detail_path` (this resource), `executions_list_path`, `findings_list_path`.
+  - `endpoints_inventory_path`, `endpoint_detail_path` (this resource), `executions_list_path`, `findings_list_path`, **`run_status_path`** (same scan’s orchestration read model as **`GET .../run/status`**).
   - `executions_list_query` / `findings_list_query`: literal substring `scan_endpoint_id=<uuid>` (no leading `?`). **Filtered scan-scoped list:** `{executions_list_path}?{executions_list_query}` (same pattern for findings). **Limitation:** paths omit the API base URL; callers prepend their configured origin.
 
 **List vs detail:** **`GET .../endpoints`** does **not** include **`investigation`** or **`drilldown`** on each item; only this detail route does.

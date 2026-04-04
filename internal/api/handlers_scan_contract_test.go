@@ -26,7 +26,7 @@ var scanRunStatusNestedKeys = map[string][]string{
 		"blocked_detail", "skipped_detail", "consistency_detail",
 	},
 	"drilldown": {
-		"scan_id", "endpoints_inventory_path", "executions_list_path", "findings_list_path", "run_status_path",
+		"scan_id", "scan_detail_path", "endpoints_inventory_path", "executions_list_path", "findings_list_path", "run_status_path",
 	},
 	"protected_route_coverage": {
 		"executions_repository_configured",

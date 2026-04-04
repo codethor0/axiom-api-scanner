@@ -20,7 +20,7 @@ var findingsListItemCanonicalKeys = []string{
 }
 
 var executionsListItemCanonicalKeys = []string{
-	"id", "scan_id", "phase", "execution_kind",
+	"id", "scan_id", "scan_endpoint_id", "phase", "execution_kind",
 	"request_summary", "response_summary", "duration_ms", "created_at",
 }
 

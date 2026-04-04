@@ -35,17 +35,17 @@ type EndpointInventorySummaryRead struct {
 
 // EndpointRead is one imported OpenAPI operation plus optional inventory summaries (GET .../endpoints).
 type EndpointRead struct {
-	ID                      string    `json:"id"`
-	ScanID                  string    `json:"scan_id"`
-	Method                  string    `json:"method"`
-	PathTemplate            string    `json:"path_template"`
-	OperationID             string    `json:"operation_id,omitempty"`
-	SecuritySchemeHints     []string  `json:"security_scheme_hints,omitempty"`
-	RequestContentTypes     []string  `json:"request_content_types,omitempty"`
-	ResponseContentTypes    []string  `json:"response_content_types,omitempty"`
-	RequestBodyJSON         bool      `json:"request_body_json"`
-	CreatedAt               time.Time `json:"created_at"`
-	DeclaresOpenAPISecurity bool      `json:"declares_openapi_security"`
+	ID                      string                        `json:"id"`
+	ScanID                  string                        `json:"scan_id"`
+	Method                  string                        `json:"method"`
+	PathTemplate            string                        `json:"path_template"`
+	OperationID             string                        `json:"operation_id,omitempty"`
+	SecuritySchemeHints     []string                      `json:"security_scheme_hints,omitempty"`
+	RequestContentTypes     []string                      `json:"request_content_types,omitempty"`
+	ResponseContentTypes    []string                      `json:"response_content_types,omitempty"`
+	RequestBodyJSON         bool                          `json:"request_body_json"`
+	CreatedAt               time.Time                     `json:"created_at"`
+	DeclaresOpenAPISecurity bool                          `json:"declares_openapi_security"`
 	Summary                 *EndpointInventorySummaryRead `json:"summary,omitempty"`
 }
 
@@ -67,13 +67,14 @@ type EndpointFindingsInvestigationRead struct {
 
 // EndpointInvestigationRead is operator-facing persisted facts for one endpoint (detail only; list items omit this block).
 type EndpointInvestigationRead struct {
-	Baseline *EndpointPhaseInvestigationRead   `json:"baseline,omitempty"`
-	Mutation *EndpointPhaseInvestigationRead   `json:"mutation,omitempty"`
+	Baseline *EndpointPhaseInvestigationRead    `json:"baseline,omitempty"`
+	Mutation *EndpointPhaseInvestigationRead    `json:"mutation,omitempty"`
 	Findings *EndpointFindingsInvestigationRead `json:"findings,omitempty"`
 }
 
 // EndpointDrilldownHints gives path-only API prefixes (leading slash) and query fragments for filtered list reads.
 // Combine executions as executions_list_path + "?" + executions_list_query when filtering by this scan_endpoint_id; same pattern for findings.
+// RunStatusPath links back to GET .../run/status for the same scan (orchestration read model).
 // ScanID repeats EndpointRead.scan_id so the drilldown object is self-contained for copy/paste.
 type EndpointDrilldownHints struct {
 	ScanID                 string `json:"scan_id"`
@@ -84,11 +85,14 @@ type EndpointDrilldownHints struct {
 	FindingsListPath       string `json:"findings_list_path"`
 	ExecutionsListQuery    string `json:"executions_list_query"`
 	FindingsListQuery      string `json:"findings_list_query"`
+	RunStatusPath          string `json:"run_status_path"`
 }
 
 // ScanRunDrilldownHints gives scan-scoped path-only routes for inventory, executions, findings, and this run status (no host).
+// ScanDetailPath is GET /v1/scans/{scanID} (lifecycle/config read model), distinct from RunStatusPath (orchestration read model).
 type ScanRunDrilldownHints struct {
 	ScanID                 string `json:"scan_id"`
+	ScanDetailPath         string `json:"scan_detail_path"`
 	EndpointsInventoryPath string `json:"endpoints_inventory_path"`
 	ExecutionsListPath     string `json:"executions_list_path"`
 	FindingsListPath       string `json:"findings_list_path"`
