@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/axiom-api-scanner-logo.png" alt="Axiom API Scanner logo" width="320" />
+</p>
+
 # Axiom API Scanner
 
 [![CI](https://github.com/codethor0/axiom-api-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/codethor0/axiom-api-scanner/actions/workflows/ci.yml)
